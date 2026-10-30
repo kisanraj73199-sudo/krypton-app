@@ -26,8 +26,10 @@ jobs:
 
       - name: Install Dependencies & Sync Capacitor
         run: |
-          npm install
-          npx cap sync android
+          - name: Install Dependencies & Sync Capacitor
+      run: |
+        npm install --legacy-peer-deps
+        npx cap sync android
 
       - name: Build Android Debug APK
         working-directory: ./android
