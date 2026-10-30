@@ -7124,56 +7124,56 @@ initiateCallPermission = async function (type) {
   activeCallSender = peer;
 
   // Check if Call Permission is already granted between these two users
- if (rel.row.call_allowed === true) {
-  // Start the outgoing call UI immediately, without opening chat as the call screen.
-  const ringStatus = `call_ring_${type}:${me}`;
+  if (rel.row.call_allowed === true) {
+    // Start the outgoing call UI immediately, without opening chat as the call screen.
+    const ringStatus = `call_ring_${type}:${me}`;
 
-  const { error: ringError } = await supabaseClient
-    .from("chat_requests")
-    .update({ call_allowed: true, status: ringStatus })
-    .or(
-      `and(sender_id.ilike.${me},receiver_id.ilike.${peer}),` +
-      `and(sender_id.ilike.${peer},receiver_id.ilike.${me})`
+    const { error: ringError } = await supabaseClient
+      .from("chat_requests")
+      .update({ call_allowed: true, status: ringStatus })
+      .or(
+        `and(sender_id.ilike.${me},receiver_id.ilike.${peer}),` +
+        `and(sender_id.ilike.${peer},receiver_id.ilike.${me})`
+      );
+
+    if (ringError) {
+      console.error("Could not start call:", ringError);
+      showToast("Could not start the call. Please try again.", "error");
+      return;
+    }
+
+    // Show the existing call screen while the receiver is being alerted.
+    const overlay = document.getElementById("call-screen-overlay");
+    const peerName = document.getElementById("call-peer-name");
+    const statusBadge = document.getElementById("call-status-badge");
+    const videoGrid = document.getElementById("video-streams-container");
+    const btnCam = document.getElementById("btn-toggle-cam");
+    const timer = document.getElementById("call-duration-timer");
+
+    if (overlay) overlay.classList.remove("hidden");
+
+    if (peerName) peerName.textContent = "@" + peer;
+
+    const peerAvatar = usersAvatarCache[peer] || "";
+    renderAvatarElement(
+      document.getElementById("call-avatar"),
+      peer,
+      peerAvatar
     );
 
-  if (ringError) {
-    console.error("Could not start call:", ringError);
-    showToast("Could not start the call. Please try again.", "error");
+    if (statusBadge) {
+      statusBadge.textContent =
+        `Ringing @${peer}… Waiting for them to answer`;
+    }
+
+    // Keep the preview hidden until the receiver accepts.
+    if (videoGrid) videoGrid.classList.add("hidden");
+    if (btnCam) btnCam.classList.add("hidden");
+    if (timer) timer.classList.add("hidden");
+
+    showToast(`Calling @${peer}…`, "info");
     return;
   }
-
-  // Show the existing call screen while the receiver is being alerted.
-  const overlay = document.getElementById("call-screen-overlay");
-  const peerName = document.getElementById("call-peer-name");
-  const statusBadge = document.getElementById("call-status-badge");
-  const videoGrid = document.getElementById("video-streams-container");
-  const btnCam = document.getElementById("btn-toggle-cam");
-  const timer = document.getElementById("call-duration-timer");
-
-  if (overlay) overlay.classList.remove("hidden");
-
-  if (peerName) peerName.textContent = "@" + peer;
-
-  const peerAvatar = usersAvatarCache[peer] || "";
-  renderAvatarElement(
-    document.getElementById("call-avatar"),
-    peer,
-    peerAvatar
-  );
-
-  if (statusBadge) {
-    statusBadge.textContent =
-      `Ringing @${peer}… Waiting for them to answer`;
-  }
-
-  // Keep the preview hidden until the receiver accepts.
-  if (videoGrid) videoGrid.classList.add("hidden");
-  if (btnCam) btnCam.classList.add("hidden");
-  if (timer) timer.classList.add("hidden");
-
-  showToast(`Calling @${peer}…`, "info");
-  return;
-}
 
   // If permission request is already pending
   if (rel.row.status && rel.row.status.startsWith("call_perm_req:")) {
@@ -9058,10 +9058,9 @@ function renderActiveDevicesList() {
           <span class="device-sub-line">Active • ${escapeHTML(sess.lastActive || "Now")} • ID: ${escapeHTML(sess.deviceId.slice(-5))}</span>
         </div>
       </div>
-      ${
-        !isCurrent
-          ? `<button type="button" class="group-remove-member-btn" onclick="remoteLogoutSingleDevice('${escapeHTML(sess.deviceId)}')">Logout</button>`
-          : ""
+      ${!isCurrent
+        ? `<button type="button" class="group-remove-member-btn" onclick="remoteLogoutSingleDevice('${escapeHTML(sess.deviceId)}')">Logout</button>`
+        : ""
       }
     `;
     listEl.appendChild(row);
@@ -9088,7 +9087,7 @@ window.remoteLogoutSingleDevice = async function (targetDeviceId) {
           initiatedBy: myDeviceInstanceId
         }
       });
-    } catch (e) {}
+    } catch (e) { }
   }
   showToast(`Remotely logged out ${targetSess ? targetSess.deviceName : "device"}!`, "success");
 };
@@ -9127,7 +9126,7 @@ if (btnLogoutOtherDevices) {
             initiatedBy: myDeviceInstanceId
           }
         });
-      } catch (e) {}
+      } catch (e) { }
     }
     showToast("All other devices have been logged out!", "success");
   });
@@ -9475,7 +9474,7 @@ function startEditingMessage(msgId, currentText) {
     input.focus();
     try {
       input.setSelectionRange(currentText.length, currentText.length);
-    } catch (e) {}
+    } catch (e) { }
   }
 }
 
@@ -9544,7 +9543,7 @@ sendTextMessage = async function () {
           .from("messages")
           .update({ ciphertext: enc.ciphertext, iv: enc.iv, salt: enc.salt })
           .eq("id", targetMsgId);
-      } catch (e) {}
+      } catch (e) { }
     }
     showToast("Message edited!", "success", 1600);
     return;
@@ -9605,7 +9604,7 @@ function bindLongPressAndRightClickToMessage(rowEl, msgId) {
       startY = e.touches[0].clientY;
       pressTimer = setTimeout(() => {
         if (navigator.vibrate) {
-          try { navigator.vibrate(25); } catch (err) {}
+          try { navigator.vibrate(25); } catch (err) { }
         }
         openWhatsAppMessageContextMenu(msgId, startX, startY);
       }, 460);
@@ -9786,7 +9785,7 @@ if (btnSwitchCamEl) {
         const localVideo = document.getElementById("local-video");
         if (localVideo) {
           localVideo.srcObject = localStream;
-          localVideo.play().catch(() => {});
+          localVideo.play().catch(() => { });
         }
 
         if (peerConnection) {
@@ -9954,7 +9953,7 @@ handleCallRequestCheck = async function (payload) {
           type: "broadcast",
           event: "call-ringing-ack",
           payload: { caller, receiver: me, callMode }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
   }
@@ -10045,7 +10044,7 @@ startWebRTC = async function (isCaller, type) {
                 payload: { offer: offer, sender: myUsername, callType: type }
               });
             }
-          } catch (e) {}
+          } catch (e) { }
         }, 1200);
       }
     };
@@ -10137,7 +10136,7 @@ initPresenceTracker = function () {
         type: "broadcast",
         event: "device-session-announce",
         payload: activeAccountSessionsMap[myDeviceInstanceId]
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, 1200);
 };
@@ -10241,7 +10240,7 @@ async function queryAllMatchingUsersEverywhere(rawQuery) {
           }
         });
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Source C: Check currently online users in Presence Mesh & cached profiles
@@ -10564,7 +10563,7 @@ deleteAccountPermanently = async function () {
     if (presenceChannel) {
       try {
         await presenceChannel.untrack();
-      } catch (e) {}
+      } catch (e) { }
     }
   } catch (err) {
     console.warn("Account wipe warning:", err);
@@ -10689,7 +10688,7 @@ startWebRTC = async function (isCaller, type) {
               payload: { encOffer, sender: myUsername, callType: type }
             });
           }
-        } catch (e) {}
+        } catch (e) { }
       };
       await sendEncryptedOffer();
     }
@@ -10721,7 +10720,7 @@ joinRoom = async function (roomId, displayName, pushHistory = true) {
             const c = iceCandidateQueue.shift();
             try {
               await peerConnection.addIceCandidate(new RTCIceCandidate(c));
-            } catch (e) {}
+            } catch (e) { }
           }
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
@@ -10731,7 +10730,7 @@ joinRoom = async function (roomId, displayName, pushHistory = true) {
             event: "webrtc-answer-e2ee",
             payload: { encAnswer, sender: myUsername }
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     })
     .on("broadcast", { event: "webrtc-answer-e2ee" }, async (payload) => {
@@ -10745,9 +10744,9 @@ joinRoom = async function (roomId, displayName, pushHistory = true) {
           const c = iceCandidateQueue.shift();
           try {
             await peerConnection.addIceCandidate(new RTCIceCandidate(c));
-          } catch (e) {}
+          } catch (e) { }
         }
-      } catch (e) {}
+      } catch (e) { }
     })
     .on("broadcast", { event: "webrtc-ice-e2ee" }, async (payload) => {
       const p = payload.payload;
@@ -10757,7 +10756,7 @@ joinRoom = async function (roomId, displayName, pushHistory = true) {
       if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         try {
           await peerConnection.addIceCandidate(new RTCIceCandidate(decryptedCand));
-        } catch (e) {}
+        } catch (e) { }
       } else {
         iceCandidateQueue.push(decryptedCand);
       }
@@ -10794,7 +10793,7 @@ function broadcastMyCameraFacingMode(facingMode) {
           facingMode: facingMode || currentCameraFacingMode || "user"
         }
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 }
 
@@ -10831,7 +10830,7 @@ if (btnSwitchCamV12) {
         const localVideo = document.getElementById("local-video");
         if (localVideo) {
           localVideo.srcObject = localStream;
-          localVideo.play().catch(() => {});
+          localVideo.play().catch(() => { });
         }
 
         if (peerConnection) {
@@ -10945,7 +10944,7 @@ function preWarmCallAudioEngine() {
       remoteAudio.playsInline = true;
       remoteAudio.muted = false;
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 ["btn-start-voice", "btn-start-video", "btn-accept-call"].forEach((btnId) => {
@@ -10979,7 +10978,7 @@ applyCallAudioOutputMode = async function (speakerOn, showFeedback = true) {
     remoteAudio.muted = false;
     remoteAudio.volume = targetElementVolume;
     if (remoteAudio.srcObject && remoteAudio.paused) {
-      remoteAudio.play().catch(() => {});
+      remoteAudio.play().catch(() => { });
     }
   }
   if (remoteVideo) {
@@ -10992,7 +10991,7 @@ applyCallAudioOutputMode = async function (speakerOn, showFeedback = true) {
       const now = callWebAudioCtx.currentTime;
       // Only add extra WebAudio gain when Speakerphone is ON (0.85 extra boost on top of native 1.0)
       callAudioGainNode.gain.setValueAtTime(isSpeakerphoneOn ? 0.85 : 0.0, now);
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === "function") {
@@ -11008,7 +11007,7 @@ applyCallAudioOutputMode = async function (speakerOn, showFeedback = true) {
           await remoteAudio.setSinkId(chosenDevice.deviceId);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (showFeedback) {
@@ -11035,7 +11034,7 @@ startWebRTC = async function (isCaller, type) {
       if (remoteAudio && remoteAudio.srcObject) {
         remoteAudio.muted = false;
         remoteAudio.volume = isSpeakerphoneOn ? 1.0 : 0.82;
-        remoteAudio.play().catch(() => {});
+        remoteAudio.play().catch(() => { });
       }
     };
   }
@@ -11115,7 +11114,7 @@ async function ensurePeerProfileDataLoaded(username) {
       }
       return row;
     }
-  } catch (e) {}
+  } catch (e) { }
   return null;
 }
 
@@ -11159,7 +11158,7 @@ fetchPeersUserData = async function () {
     localStorage.setItem("krypton_bio_cache", JSON.stringify(usersBioCache));
     localStorage.setItem("krypton_session_cache", JSON.stringify(usersSessionCache));
     localStorage.setItem("krypton_peer_token_bindings", JSON.stringify(peerTokenBindingMap));
-  } catch (e) {}
+  } catch (e) { }
 
   renderPeerList();
   updateHeaderStatus();
@@ -11597,7 +11596,7 @@ if (tgBtnSaveUsername && tgUsernameInput) {
                 sessionToken: mySessionId
               }
             });
-          } catch (e) {}
+          } catch (e) { }
         }
       }
 
@@ -12280,7 +12279,7 @@ async function broadcastMyProfileUpdate() {
         bio: myUserBio || "Hey there! I am using Krypton."
       }
     });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // Hook updateMyAvatarUI so whenever we upload/remove our own photo or update our bio, we broadcast it live to everyone!
@@ -12444,10 +12443,10 @@ function tuneWebRTCLowLatencyParameters(pc) {
           params.encodings[0].priority = "high";
           params.encodings[0].networkPriority = "high";
         }
-        sender.setParameters(params).catch(() => {});
+        sender.setParameters(params).catch(() => { });
       });
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 const prevStartWebRTCv15 = startWebRTC;
@@ -13021,8 +13020,8 @@ function syncCallFullscreenIcons() {
   const topIcon = document.getElementById("call-fs-top-icon");
   const isNativeFs = Boolean(
     document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.msFullscreenElement
+    document.webkitFullscreenElement ||
+    document.msFullscreenElement
   );
   const active = isCallFullscreenActive || isNativeFs;
 
@@ -13054,8 +13053,8 @@ async function toggleCallFullScreenView(e) {
 
   const isNativeFs = Boolean(
     document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.msFullscreenElement
+    document.webkitFullscreenElement ||
+    document.msFullscreenElement
   );
 
   if (isCallFullscreenActive || isNativeFs) {
@@ -13064,7 +13063,7 @@ async function toggleCallFullScreenView(e) {
       try {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
-      } catch (err) {}
+      } catch (err) { }
     }
     syncCallFullscreenIcons();
   } else {
@@ -13222,7 +13221,7 @@ window.inviteFriendToActiveCall = async function (targetUsername) {
           existingPeer: (currentPeerUser || activeCallSender || "").toLowerCase()
         }
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 };
 
@@ -13231,7 +13230,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
   if (!peer) return null;
 
   if (extraCallPeersConnections[peer]) {
-    try { extraCallPeersConnections[peer].close(); } catch (e) {}
+    try { extraCallPeersConnections[peer].close(); } catch (e) { }
   }
 
   const pc = new RTCPeerConnection(rtcConfig);
@@ -13249,7 +13248,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
     if (isVideo && localVideo) {
       localVideo.srcObject = localStream;
       localVideo.muted = true;
-      localVideo.play().catch(() => {});
+      localVideo.play().catch(() => { });
     }
   }
 
@@ -13270,7 +13269,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
           type: "ice",
           data: encCand
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -13299,7 +13298,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
       }
       audEl.srcObject = remoteStream;
       audEl.volume = isSpeakerphoneOn ? 1.0 : 0.85;
-      audEl.play().catch(() => {});
+      audEl.play().catch(() => { });
     }
 
     // If video call, render their video tile in #extra-remote-videos-grid (or main #remote-video if primary isn't connected)
@@ -13307,7 +13306,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
       const mainRemoteVideo = document.getElementById("remote-video");
       if (mainRemoteVideo && !mainRemoteVideo.srcObject) {
         mainRemoteVideo.srcObject = remoteStream;
-        mainRemoteVideo.play().catch(() => {});
+        mainRemoteVideo.play().catch(() => { });
       } else {
         const extraGrid = document.getElementById("extra-remote-videos-grid");
         if (extraGrid) {
@@ -13329,8 +13328,8 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
                 const tmpStream = mainRemoteVideo.srcObject;
                 mainRemoteVideo.srcObject = tileVid.srcObject;
                 tileVid.srcObject = tmpStream;
-                mainRemoteVideo.play().catch(() => {});
-                tileVid.play().catch(() => {});
+                mainRemoteVideo.play().catch(() => { });
+                tileVid.play().catch(() => { });
               }
             };
             extraGrid.appendChild(tile);
@@ -13338,7 +13337,7 @@ async function createExtraPeerConnectionForMember(peerUsername, isInitiator) {
           const vEl = tile.querySelector("video");
           if (vEl && vEl.srcObject !== remoteStream) {
             vEl.srcObject = remoteStream;
-            vEl.play().catch(() => {});
+            vEl.play().catch(() => { });
           }
         }
       }
@@ -13457,7 +13456,7 @@ initPresenceTracker = function () {
         await pc.setRemoteDescription(new RTCSessionDescription(decryptedSignal));
         while (pc.iceQueue && pc.iceQueue.length > 0) {
           const c = pc.iceQueue.shift();
-          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { }
         }
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -13479,14 +13478,14 @@ initPresenceTracker = function () {
         await pc.setRemoteDescription(new RTCSessionDescription(decryptedSignal));
         while (pc.iceQueue && pc.iceQueue.length > 0) {
           const c = pc.iceQueue.shift();
-          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { }
         }
       }
     } else if (p.type === "ice") {
       const pc = extraCallPeersConnections[sender];
       if (pc) {
         if (pc.remoteDescription && pc.remoteDescription.type) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(decryptedSignal)); } catch (e) {}
+          try { await pc.addIceCandidate(new RTCIceCandidate(decryptedSignal)); } catch (e) { }
         } else {
           pc.iceQueue.push(decryptedSignal);
         }
@@ -13499,7 +13498,7 @@ initPresenceTracker = function () {
 const prevEndCallV16 = endCall;
 endCall = function (notifyRemote = true) {
   Object.keys(extraCallPeersConnections).forEach((k) => {
-    try { extraCallPeersConnections[k].close(); } catch (e) {}
+    try { extraCallPeersConnections[k].close(); } catch (e) { }
   });
   extraCallPeersConnections = {};
   activeCallParticipantsSet.clear();
@@ -13516,7 +13515,7 @@ endCall = function (notifyRemote = true) {
   if (isCallFullscreenActive || document.fullscreenElement) {
     isCallFullscreenActive = false;
     if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
     syncCallFullscreenIcons();
   }
@@ -13652,11 +13651,10 @@ renderAddCallFriendsList = function (filterQuery = "") {
   if (acceptedFriends.length === 0) {
     listEl.innerHTML = `
       <div style="padding: 18px 12px; text-align: center; font-size: 12px; color: var(--text-dim);">
-        ${
-          q
-            ? `No connected friend matching "@${escapeHTML(q)}"`
-            : "No other accepted friends available to add. (Users must be in your Friend Zone first!)"
-        }
+        ${q
+        ? `No connected friend matching "@${escapeHTML(q)}"`
+        : "No other accepted friends available to add. (Users must be in your Friend Zone first!)"
+      }
       </div>
     `;
     return;
@@ -13674,14 +13672,14 @@ renderAddCallFriendsList = function (filterQuery = "") {
         ? "Online • Call Permission Approved ✓"
         : "Friend • Call Permission Approved ✓"
       : isPermPending
-      ? "Call Permission Request Pending..."
-      : "Friend • Requires Call Permission First";
+        ? "Call Permission Request Pending..."
+        : "Friend • Requires Call Permission First";
 
     let btnLabel = isCallPermAllowed
       ? "+ Ring & Add"
       : isPermPending
-      ? "Req Pending"
-      : "Send Call Req";
+        ? "Req Pending"
+        : "Send Call Req";
 
     const row = document.createElement("div");
     row.className = "contact-card";
@@ -13772,7 +13770,7 @@ window.inviteFriendToActiveCall = async function (targetUsername) {
           existingPeer: (currentPeerUser || activeCallSender || "").toLowerCase()
         }
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 };
 
@@ -13796,7 +13794,7 @@ function activateCallCapturePrivacyShield(reasonText = "Screenshot & Screen Reco
 
   // Clear clipboard in case PrintScreen copied frame to clipboard
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-    navigator.clipboard.writeText("Krypton Privacy Shield: Screenshots are disabled during encrypted calls.").catch(() => {});
+    navigator.clipboard.writeText("Krypton Privacy Shield: Screenshots are disabled during encrypted calls.").catch(() => { });
   }
 
   showToast(reasonText, "error", 3200);
@@ -13998,7 +13996,7 @@ async function enableOrUpgradeCallCamera(desiredFacingMode) {
     if (localVideo) {
       localVideo.srcObject = localStream;
       localVideo.muted = true;
-      localVideo.play().catch(() => {});
+      localVideo.play().catch(() => { });
     }
 
     applyVideoMirrorClasses();
@@ -14122,7 +14120,7 @@ startWebRTC = async function (isCaller, type) {
         if (videoGrid) videoGrid.classList.remove("hidden");
         if (remoteVideo && event.streams && event.streams[0]) {
           remoteVideo.srcObject = event.streams[0];
-          remoteVideo.play().catch(() => {});
+          remoteVideo.play().catch(() => { });
         }
       }
     };
@@ -14180,7 +14178,7 @@ activateCallCapturePrivacyShield = function (
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
     navigator.clipboard
       .writeText("Krypton Privacy Shield: Screen & Audio capture is disabled during encrypted calls.")
-      .catch(() => {});
+      .catch(() => { });
   }
 
   showToast(reasonText, "error", 3200);
@@ -14230,7 +14228,7 @@ computeSafetyFingerprint = async function (peerUsername) {
         localStorage.setItem("krypton_session_cache", JSON.stringify(usersSessionCache));
         localStorage.setItem("krypton_peer_token_bindings", JSON.stringify(peerTokenBindingMap));
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const myIdentityToken = (mySessionId || me).trim().toLowerCase();
@@ -14419,7 +14417,7 @@ function syncNativeAndroidFlagSecure(enabled) {
     if (window.AndroidBridge && typeof window.AndroidBridge.setFlagSecure === "function") {
       window.AndroidBridge.setFlagSecure(Boolean(enabled));
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 let globalCaptureShieldTimer = null;
@@ -14440,7 +14438,7 @@ function triggerAppWideCaptureShield(reasonMsg = "Screenshot & Screen Recording 
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
     navigator.clipboard
       .writeText("Krypton Privacy Shield: Screen capture is disabled.")
-      .catch(() => {});
+      .catch(() => { });
   }
 
   if (reasonMsg) {
@@ -14622,7 +14620,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
         window.Capacitor.Plugins.App.minimizeApp();
       }
     });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 ensureGlobalCaptureShieldDOM();

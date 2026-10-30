@@ -1,12 +1,12 @@
-const CACHE_NAME = "krypton-ultra-v21000";
+const CACHE_NAME = "krypton-ultra-v22000";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
-  "./style.css?v=2000",
-  "./app.js?v=2000",
+  "./style.css?v=22000",
+  "./app.js?v=22000",
   "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./icon-192.png?v=22000",
+  "./icon-512.png?v=22000"
 ];
 
 self.addEventListener("install", (event) => {
