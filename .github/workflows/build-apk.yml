@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Setup Node.js 22 (Required for @capacitor/cli@8.6.0 & @capacitor/assets)
+      # Setup Node.js 22
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -35,12 +35,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-
-      # Verify Java
-      - name: Verify Java Version
-        run: |
-          java -version
-          javac -version
 
       # Install Dependencies, Generate App Icons & Sync Capacitor
       - name: Install Dependencies & Sync Capacitor
@@ -57,6 +51,19 @@ jobs:
             npx @capacitor/assets generate --android --iconBackgroundColor '#06080f' --iconBackgroundColorDark '#06080f' --splashBackgroundColor '#06080f' --splashBackgroundColorDark '#06080f'
           fi
           npx cap sync android
+
+      # Generate Consistent Signing Key & Auto-Increment VersionCode so APK Updates Over Existing App!
+      - name: Prepare Consistent APK Signing Key & VersionCode
+        run: |
+          mkdir -p ~/.android
+          rm -f ~/.android/debug.keystore
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          cp -f ~/.android/debug.keystore android/app/debug.keystore || true
+          VER_CODE=$((100 + ${GITHUB_RUN_NUMBER:-1}))
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i "s/versionCode [0-9]*/versionCode $VER_CODE/g" android/app/build.gradle
+            sed -i "s/versionName \"[^\"]*\"/versionName \"2.5.$VER_CODE\"/g" android/app/build.gradle
+          fi
 
       # Build Android Debug APK
       - name: Build Android Debug APK

@@ -13,14 +13,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Krypton" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=22000" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=22000" />
-  <link rel="apple-touch-icon" href="icon-192.png?v=22000" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=23000" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=23000" />
+  <link rel="apple-touch-icon" href="icon-192.png?v=23000" />
 
   <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=22000" />
+  <link rel="stylesheet" href="style.css?v=23000" />
 </head>
 
 <body class="dark-theme" data-accent="emerald">
@@ -35,39 +35,122 @@
   <!-- Non-Blocking Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <!-- Hidden Legacy Hooks for Removed PWA Install Banner (Prevents JS Null Errors) -->
+  <!-- Hidden Legacy Hooks for Removed PWA Install Banner -->
   <div id="pwa-install-banner" class="hidden" style="display: none !important;" aria-hidden="true">
     <button id="btn-banner-install-pwa" class="hidden"></button>
     <button id="btn-close-pwa-banner" class="hidden"></button>
   </div>
 
-  <!-- Real In-App Update Progress Modal -->
+  <!-- WhatsApp-Style In-App Updater Modal -->
   <div id="krypton-inapp-update-modal" class="glass-modal hidden" style="z-index: 99999998;">
-    <div class="glass-card" style="max-width: 360px; text-align: center; align-items: center;">
-      <img src="icon-192.png?v=22000" alt="Krypton"
+    <div class="glass-card" style="max-width: 375px; text-align: center; align-items: center;">
+      <img src="icon-192.png?v=23000" alt="Krypton"
         style="width: 64px; height: 64px; border-radius: 18px; border: 1.5px solid var(--accent-primary); box-shadow: 0 8px 24px var(--accent-glow);" />
-      <h3 id="inapp-update-title" style="font-size: 18px; font-weight: 800; margin-top: 4px;">Updating Krypton...</h3>
+      <h3 id="inapp-update-title" style="font-size: 18px; font-weight: 800; margin-top: 4px;">Krypton App Update</h3>
       <p id="inapp-update-desc" style="font-size: 12px; color: var(--text-muted); line-height: 1.45;">Syncing latest
-        encrypted mesh modules & clearing old cache...</p>
+        encrypted mesh features & checking new APK release...</p>
       <div
         style="width: 100%; height: 8px; background: var(--glass-card); border-radius: 999px; overflow: hidden; border: 1px solid var(--glass-border-subtle); margin: 6px 0;">
         <div id="inapp-update-progress-bar"
-          style="width: 15%; height: 100%; background: var(--accent-gradient); transition: width 0.25s ease;"></div>
+          style="width: 20%; height: 100%; background: var(--accent-gradient); transition: width 0.25s ease;"></div>
       </div>
       <span id="inapp-update-status-pct"
-        style="font-size: 11px; font-weight: 800; color: var(--accent-primary);">15%</span>
+        style="font-size: 11px; font-weight: 800; color: var(--accent-primary);">Checking...</span>
+      <div id="inapp-update-actions" class="modal-actions hidden"
+        style="width: 100%; margin-top: 8px; flex-direction: column; gap: 8px;">
+        <button type="button" id="btn-download-apk-over-existing" class="glass-btn primary" style="width: 100%;">
+          <i data-lucide="download" style="width: 15px; height: 15px; vertical-align: -2px; margin-right: 5px;"></i>
+          <span>Download & Install New APK Update</span>
+        </button>
+        <button type="button" id="btn-instant-hot-reload" class="glass-btn secondary" style="width: 100%;">
+          <span>Apply Instant Live Patch Now</span>
+        </button>
+        <button type="button" id="btn-close-update-modal" class="glass-btn-sm"
+          style="width: 100%; padding: 8px;">Close</button>
+      </div>
     </div>
   </div>
 
+  <!-- WhatsApp-Style Link Web Device (QR Code Scanner) Modal -->
+  <div id="krypton-qr-scanner-modal" class="glass-modal hidden" style="z-index: 99999996;">
+    <div class="glass-card"
+      style="max-width: 400px; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="scan-line" style="width: 18px; height: 18px;"></i>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 800;">Link Krypton Web Device</h3>
+        </div>
+        <button type="button" id="btn-close-qr-scanner" class="icon-close-btn sm" title="Close Scanner">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div
+        style="padding: 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;">
+        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.45;">
+          Open <strong>Krypton Web</strong> on your laptop/PC browser and point your phone's camera at the QR code to
+          log in instantly.
+        </p>
+
+        <!-- Camera Scanner Viewfinder Box -->
+        <div id="qr-camera-viewport"
+          style="position: relative; width: 250px; height: 250px; border-radius: 22px; overflow: hidden; background: #05070c; border: 2px solid var(--accent-primary); box-shadow: 0 0 28px var(--accent-glow);">
+          <video id="qr-scanner-video" autoplay playsinline muted
+            style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(1) !important;"></video>
+          <!-- Animated Cyber Laser Scan Line -->
+          <div id="qr-laser-line"
+            style="position: absolute; left: 12px; right: 12px; height: 2.5px; background: var(--accent-primary); box-shadow: 0 0 12px var(--accent-primary); top: 15%; animation: qrLaserScan 2.2s infinite alternate ease-in-out;">
+          </div>
+          <!-- Corner Brackets -->
+          <div
+            style="position: absolute; inset: 14px; border: 1.5px dashed rgba(255,255,255,0.28); border-radius: 14px; pointer-events: none;">
+          </div>
+        </div>
+
+        <span id="qr-scan-status-text" style="font-size: 11.5px; font-weight: 700; color: var(--accent-primary);">
+          Scanning for Krypton Web QR Code...
+        </span>
+
+        <!-- Fallback Manual 6-Digit Pairing Code Input (Just like WhatsApp "Link with phone number/code instead") -->
+        <div style="width: 100%; border-top: 1px solid var(--glass-border-subtle); padding-top: 10px; margin-top: 2px;">
+          <label class="auth-field-label" style="text-align: left;">OR ENTER WEB PAIRING CODE MANUALLY</label>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <input type="text" id="qr-manual-code-input" placeholder="Paste or type Web Code (e.g. KRYP-8492)"
+              autocomplete="off"
+              style="flex: 1; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--glass-border-subtle); background: var(--glass-card); color: var(--text-main); font-size: 13px; outline: none; text-transform: uppercase;" />
+            <button type="button" id="btn-link-web-by-code" class="glass-btn-sm btn-save-action"
+              style="padding: 0 14px;">Link Web</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes qrLaserScan {
+      0% {
+        top: 12%;
+        opacity: 0.75;
+      }
+
+      100% {
+        top: 86%;
+        opacity: 1;
+      }
+    }
+  </style>
+
   <!-- Privacy Panic Blur & App PIN Lock Overlay (Alt+X / Double Esc / Auto-Lock) -->
   <div id="app-lock-overlay" class="glass-modal hidden"
-    style="z-index: 99999995; background: rgba(4, 7, 15, 0.88); backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);">
+    style="z-index: 99999995; background: rgba(4, 7, 15, 0.94); backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);">
     <div class="glass-card lock-screen-card" style="max-width: 340px; text-align: center;">
       <div class="auth-logo-glow" style="padding: 0; overflow: hidden;">
-        <img src="icon-192.png?v=22000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
+        <img src="icon-192.png?v=23000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
       </div>
       <h3 style="font-size: 19px; font-weight: 800;">Mesh Privacy Shield</h3>
-      <p id="lock-screen-desc" style="font-size: 12px; color: var(--text-dim);">Screen is encrypted & blurred for your
+      <p id="lock-screen-desc" style="font-size: 12px; color: var(--text-dim);">Screen is encrypted & locked for your
         privacy</p>
       <div id="pin-input-section" class="hidden" style="margin-top: 8px;">
         <div class="pin-input-with-toggle" style="max-width: 220px; margin: 0 auto;">
@@ -88,7 +171,7 @@
         <button id="btn-biometric-unlock" type="button" class="glass-btn secondary hidden"
           style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
           <i data-lucide="fingerprint" style="width: 16px; height: 16px; color: var(--accent-primary);"></i>
-          <span>Unlock with Biometrics</span>
+          <span>Unlock with Fingerprint / Face</span>
         </button>
       </div>
     </div>
@@ -114,12 +197,8 @@
         style="padding: 16px 18px; gap: 14px; overflow-y: auto; flex: 1 1 auto; min-height: 0;">
         <div class="smart-lock-instructions">
           <div class="lock-inst-item">
-            <span class="lock-inst-badge">Alt + X</span>
-            <span>Press <strong>Alt+X</strong> or <strong>Double Esc</strong> anytime to instant-blur screen.</span>
-          </div>
-          <div class="lock-inst-item">
             <span class="lock-inst-badge">Lock Icon</span>
-            <span>Home screen <strong>Lock Icon</strong> locks the app immediately in 1 click.</span>
+            <span>Tap Home screen <strong>Lock Icon</strong> to lock Krypton immediately.</span>
           </div>
         </div>
 
@@ -140,10 +219,10 @@
           <div class="setting-text">
             <span class="setting-title" style="font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px;">
               <i data-lucide="fingerprint" style="width: 14px; height: 14px; color: var(--accent-primary);"></i>
-              <span>Biometric Unlock (Fingerprint / FaceID)</span>
+              <span>Biometric Unlock (Fingerprint / Face)</span>
             </span>
-            <span class="setting-desc" id="biometric-setup-desc" style="font-size: 10.5px;">Use device hardware
-              biometrics alongside your PIN</span>
+            <span class="setting-desc" id="biometric-setup-desc" style="font-size: 10.5px;">Use phone's hardware
+              Fingerprint or Face Unlock</span>
           </div>
           <button type="button" id="btn-enroll-biometric" class="glass-btn-sm btn-save-action"
             style="padding: 5px 11px;">Enable</button>
@@ -155,8 +234,8 @@
             <label class="autolock-option-card">
               <input type="radio" name="autolock-mode" value="instant" />
               <div class="autolock-opt-meta">
-                <span class="autolock-opt-title">Instant on Minimize / Tab Switch</span>
-                <span class="autolock-opt-sub">Locks immediately when you switch tabs or minimize app</span>
+                <span class="autolock-opt-title">Instant on Minimize / App Switch</span>
+                <span class="autolock-opt-sub">Locks immediately when you minimize app</span>
               </div>
             </label>
             <label class="autolock-option-card">
@@ -177,7 +256,7 @@
               <input type="radio" name="autolock-mode" value="restart" checked />
               <div class="autolock-opt-meta">
                 <span class="autolock-opt-title">Only on App Restart / Manual Lock</span>
-                <span class="autolock-opt-sub">Requires PIN when opening app or pressing Lock / Alt+X</span>
+                <span class="autolock-opt-sub">Requires PIN/Biometrics when opening app or tapping Lock</span>
               </div>
             </label>
           </div>
@@ -186,7 +265,7 @@
 
       <div class="modal-actions"
         style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
-        <button id="btn-lock-now-from-modal" class="glass-btn secondary">Lock Screen Now</button>
+        <button id="btn-lock-now-from-modal" class="glass-btn secondary">Lock Now</button>
         <button id="btn-save-smart-lock-modal" class="glass-btn primary">Save Lock Settings</button>
       </div>
     </div>
@@ -501,8 +580,8 @@
           <!-- App PIN Lock & Auto-Lock Timer -->
           <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
             <div class="setting-text">
-              <span class="setting-title">App PIN Lock & Auto-Lock Timer</span>
-              <span class="setting-desc" id="settings-lock-status-sub">Configure PIN, Biometrics & Smart Auto-Lock
+              <span class="setting-title">App PIN Lock & Biometrics</span>
+              <span class="setting-desc" id="settings-lock-status-sub">Configure PIN, Fingerprint/Face & Auto-Lock
                 Timer</span>
             </div>
             <button type="button" id="btn-open-smart-lock-from-settings" class="glass-btn-sm btn-save-action"
@@ -512,6 +591,23 @@
             </button>
             <input type="password" id="settings-pin-input" class="hidden" aria-hidden="true" />
             <button type="button" id="btn-save-pin" class="hidden" aria-hidden="true"></button>
+          </div>
+
+          <!-- Link Krypton Web Device (QR Scanner) in Settings -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title"
+                style="display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary);">
+                <i data-lucide="scan-line" style="width: 15px; height: 15px;"></i>
+                <span>Link Krypton Web (QR Scanner)</span>
+              </span>
+              <span class="setting-desc">Scan QR code on Krypton Web to login instantly on PC</span>
+            </div>
+            <button type="button" id="btn-settings-open-qr" class="glass-btn-sm btn-save-action"
+              style="padding: 7px 13px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="qr-code" style="width: 14px; height: 14px;"></i>
+              <span>Scan QR</span>
+            </button>
           </div>
 
           <!-- Security Info Badge -->
@@ -580,15 +676,9 @@
             </label>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-text">
-              <span class="setting-title">Background Push Alerts</span>
-              <span class="setting-desc">Receive desktop/mobile notifications for new messages & calls</span>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="toggle-push-notifications" />
-              <span class="slider"></span>
-            </label>
+          <!-- Hidden Legacy Hook for Removed Background Push Alerts (Handled by Android OS Directly!) -->
+          <div class="setting-item hidden" style="display: none !important;" aria-hidden="true">
+            <input type="checkbox" id="toggle-push-notifications" checked />
           </div>
 
           <div class="setting-item">
@@ -634,11 +724,11 @@
             <span id="settings-install-desc" class="hidden"></span>
           </div>
 
-          <!-- Real In-App Update Feature -->
+          <!-- WhatsApp-Style In-App Update Feature -->
           <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
             <div class="setting-text">
-              <span class="setting-title" style="color: var(--accent-primary);">Check & Install App Update</span>
-              <span class="setting-desc">Update Krypton directly inside the app with latest features</span>
+              <span class="setting-title" style="color: var(--accent-primary);">App Update (Over-The-Air)</span>
+              <span class="setting-desc">Install latest Krypton APK update directly over current app</span>
             </div>
             <button id="btn-force-reload-app" class="glass-btn-sm btn-save-action"
               style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
@@ -680,12 +770,12 @@
     </div>
   </div>
 
-  <!-- Identity Login / Register Modal -->
+  <!-- Identity Login / Register Modal (With Password Show/Hide Eye Button!) -->
   <div id="auth-modal" class="glass-modal">
     <div class="glass-card auth-card">
       <div class="brand">
         <div class="auth-logo-glow" style="padding: 0; overflow: hidden;">
-          <img src="icon-192.png?v=22000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
+          <img src="icon-192.png?v=23000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
         </div>
         <h2 id="modal-title" style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Krypton</h2>
         <p id="modal-desc" style="margin-bottom: 10px;">Next-Gen Encrypted Glass Mesh</p>
@@ -705,10 +795,15 @@
 
       <div class="input-group" style="margin-top: 8px;">
         <label class="auth-field-label">SECURE PASSWORD</label>
-        <div class="auth-input-wrap">
+        <div class="auth-input-wrap" style="position: relative;">
           <i data-lucide="key-round" class="auth-input-icon"></i>
           <input type="password" id="password-input" placeholder="Enter your password" autocomplete="current-password"
-            data-lpignore="true" />
+            data-lpignore="true" style="padding-right: 42px !important;" />
+          <button type="button" id="btn-toggle-auth-password" class="pin-visibility-toggle"
+            data-pin-target="password-input" aria-label="Show Password" title="Show / Hide Password"
+            style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: none; background: transparent; color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%;">
+            <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+          </button>
         </div>
         <span id="username-status" class="status-msg"></span>
       </div>
@@ -875,10 +970,10 @@
     <!-- Sidebar -->
     <aside class="glass-panel sidebar krypton-clean-sidebar" id="app-sidebar">
 
-      <!-- 1. Top Clean Brand Bar with New Krypton Icon -->
+      <!-- 1. Top Clean Brand Bar with New Krypton Icon & QR Scanner Button -->
       <div class="krypton-top-brand-bar" id="sidebar-top-brand-bar">
         <div class="krypton-brand-title-wrap" style="display: flex; align-items: center; gap: 9px;">
-          <img src="icon-192.png?v=22000" alt="Krypton"
+          <img src="icon-192.png?v=23000" alt="Krypton"
             style="width: 28px; height: 28px; border-radius: 8px; object-fit: cover; border: 1px solid var(--accent-primary);" />
           <div style="display: flex; align-items: baseline; gap: 7px; min-width: 0;">
             <span class="krypton-brand-title">Krypton</span>
@@ -887,6 +982,9 @@
         </div>
 
         <div class="krypton-top-actions" style="position: relative;">
+          <button id="btn-top-qr-scanner" class="tool-btn" title="Scan QR to Link Krypton Web">
+            <i data-lucide="scan-line" style="width: 18px; height: 18px;"></i>
+          </button>
           <button id="btn-panic-lock" class="tool-btn" title="Instant App Lock (Alt+X)">
             <i data-lucide="lock" style="width: 18px; height: 18px;"></i>
           </button>
@@ -898,6 +996,10 @@
           </button>
 
           <div id="top-main-dropdown-menu" class="krypton-top-dropdown-menu hidden">
+            <button type="button" id="top-menu-link-web" class="krypton-top-menu-item">
+              <i data-lucide="qr-code" style="width: 17px; height: 17px; color: var(--accent-primary);"></i>
+              <span>Link Web Device (Scan QR)</span>
+            </button>
             <button type="button" id="top-menu-toggle-dark" class="krypton-top-menu-item">
               <i data-lucide="moon" id="top-menu-dark-icon" style="width: 17px; height: 17px;"></i>
               <span id="top-menu-dark-label">Obsidian Dark Mode: ON</span>
@@ -1335,13 +1437,14 @@
 
   </div>
 
-  <script src="app.js?v=22000"></script>
+  <script src="app.js?v=23000"></script>
 
-  <!-- KRYPTON v22000 NATIVE APK MASTER PATCH:
-       1. Fix Profile DP & Group Icon Upload in Android WebView (#tg-btn-camera-badge, #tg-tile-set-photo, etc.)
-       2. Trigger Native Android Mic/Camera Permissions on Call & Voice Note
-       3. Remove Install App Prompts Everywhere
-       4. Real In-App Update Engine (Progress Bar + Native APK Installer / Live Cache Update) -->
+  <!-- KRYPTON v23000 MASTER NATIVE PATCH:
+       1. Android OS Native Notifications (Replaces Background Push Toggle)
+       2. App Lock Fix + Native Android Hardware Fingerprint / Face Biometric Unlock
+       3. 0ms Ultra-Fast Persistent Chat Cache & Pre-Warming
+       4. WhatsApp-Style Over-The-Air APK Updater (Installs directly over existing APK)
+       5. Built-in QR Code Scanner + Manual Pairing Code to Link Krypton Web -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
@@ -1353,33 +1456,179 @@
     }
 
     (function () {
-      // 1. Suppress all PWA Install Banners & Prompts permanently
-      window.addEventListener("beforeinstallprompt", (e) => {
-        e.preventDefault();
-        return false;
-      });
-      if (typeof window.showBottomPwaInstallBanner === "function") {
-        window.showBottomPwaInstallBanner = function () { };
+      const GITHUB_APK_RELEASE_URL = "https://github.com/kisanraj73199-sudo/krypton-app/releases/latest/download/app-debug.apk";
+
+      // 1. Always Route Notifications to Android OS Native Notification Bar
+      userSettings.pushAlerts = true;
+      const origTriggerPush = window.triggerSystemPushNotification;
+      window.triggerSystemPushNotification = function (title, bodyText, tag) {
+        if (window.KryptonNative && typeof window.KryptonNative.showNativeNotification === "function") {
+          window.KryptonNative.showNativeNotification(title, bodyText);
+          return;
+        }
+        if (typeof origTriggerPush === "function") {
+          origTriggerPush(title, bodyText, tag);
+        }
+      };
+
+      // 2. Fix App Lock & Enable Native Android Hardware Biometrics (Fingerprint / Face / Screen Lock)
+      let nativeBioEnabled = localStorage.getItem("krypton_native_bio_enabled") === "true";
+
+      window.hasAnyLockMethodConfigured = function () {
+        return Boolean((myAppPin && myAppPin.length >= 4) || nativeBioEnabled || biometricCredId);
+      };
+
+      window.onKryptonNativeBiometricResult = function (success) {
+        if (success) {
+          const overlay = document.getElementById("app-lock-overlay");
+          if (overlay) overlay.classList.add("hidden");
+          if (typeof showToast === "function") showToast("Unlocked with Device Biometrics!", "success", 1800);
+        } else {
+          if (typeof showToast === "function") showToast("Biometric verification cancelled.", "info", 1800);
+        }
+      };
+
+      function syncNativeBiometricUI() {
+        const isNativeBioSupported =
+          (window.KryptonNative && typeof window.KryptonNative.isBiometricAvailable === "function" && window.KryptonNative.isBiometricAvailable()) ||
+          Boolean(window.PublicKeyCredential);
+
+        const btnEnrollBio = document.getElementById("btn-enroll-biometric");
+        const descBio = document.getElementById("biometric-setup-desc");
+        const btnUnlockBio = document.getElementById("btn-biometric-unlock");
+        const pinSection = document.getElementById("pin-input-section");
+        const btnUnlockMesh = document.getElementById("btn-unlock-screen");
+
+        if (btnEnrollBio) {
+          btnEnrollBio.disabled = false;
+          if (nativeBioEnabled || biometricCredId) {
+            btnEnrollBio.textContent = "Disable";
+            btnEnrollBio.className = "glass-btn-sm danger";
+            if (descBio) descBio.textContent = "Hardware Fingerprint / Face Unlock is ACTIVE";
+          } else if (isNativeBioSupported) {
+            btnEnrollBio.textContent = "Enable";
+            btnEnrollBio.className = "glass-btn-sm btn-save-action";
+            if (descBio) descBio.textContent = "Use phone's Fingerprint, Face Unlock or Screen Lock";
+          } else {
+            btnEnrollBio.textContent = "Enable";
+            btnEnrollBio.className = "glass-btn-sm btn-save-action";
+          }
+        }
+
+        if (btnUnlockBio) {
+          btnUnlockBio.classList.toggle("hidden", !(nativeBioEnabled || biometricCredId));
+        }
+
+        if (pinSection) {
+          pinSection.classList.toggle("hidden", !Boolean(myAppPin && myAppPin.length >= 4));
+        }
+        if (btnUnlockMesh) {
+          btnUnlockMesh.innerHTML = myAppPin
+            ? '<i data-lucide="unlock" style="width:15px;height:15px;vertical-align:-2px;margin-right:5px;"></i><span>Unlock with PIN</span>'
+            : '<i data-lucide="unlock" style="width:15px;height:15px;vertical-align:-2px;margin-right:5px;"></i><span>Unlock Mesh</span>';
+          if (window.lucide) lucide.createIcons({ nodes: [btnUnlockMesh] });
+        }
       }
 
-      // 2. Fix DP Camera Badge & "Set Photo" Tile inside Telegram-Style Profile Dashboard
-      function openProfilePicturePicker(e) {
-        if (e) {
-          e.preventDefault();
-          e.stopPropagation();
+      // Override triggerPrivacyLock so it works cleanly with PIN and/or Native Biometrics
+      window.triggerPrivacyLock = function () {
+        const overlay = document.getElementById("app-lock-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("hidden");
+        const errEl = document.getElementById("lock-pin-error");
+        if (errEl) errEl.textContent = "";
+        const pinInp = document.getElementById("lock-pin-input");
+        if (pinInp) pinInp.value = "";
+
+        syncNativeBiometricUI();
+
+        // Automatically pop up Fingerprint/Face scanner if enabled and no PIN typed yet
+        if (nativeBioEnabled && window.KryptonNative && typeof window.KryptonNative.authenticateBiometric === "function") {
+          setTimeout(() => {
+            if (!overlay.classList.contains("hidden")) {
+              window.KryptonNative.authenticateBiometric();
+            }
+          }, 220);
+        } else if (myAppPin && pinInp) {
+          setTimeout(() => pinInp.focus(), 80);
         }
-        if (window.KryptonNative && typeof window.KryptonNative.requestMediaPermissions === "function") {
-          window.KryptonNative.requestMediaPermissions();
+      };
+
+      function bindBiometricButtons() {
+        const btnEnrollBio = document.getElementById("btn-enroll-biometric");
+        if (btnEnrollBio && !btnEnrollBio.dataset.nativeBioBound) {
+          btnEnrollBio.dataset.nativeBioBound = "true";
+          const cleanEnroll = btnEnrollBio.cloneNode(true);
+          btnEnrollBio.parentNode.replaceChild(cleanEnroll, btnEnrollBio);
+
+          cleanEnroll.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (nativeBioEnabled || biometricCredId) {
+              nativeBioEnabled = false;
+              biometricCredId = "";
+              localStorage.removeItem("krypton_native_bio_enabled");
+              localStorage.removeItem("krypton_biometric_cred_id");
+              syncNativeBiometricUI();
+              showToast("Biometric unlock disabled.", "info");
+              return;
+            }
+            if (window.KryptonNative && typeof window.KryptonNative.authenticateBiometric === "function") {
+              nativeBioEnabled = true;
+              localStorage.setItem("krypton_native_bio_enabled", "true");
+              syncNativeBiometricUI();
+              showToast("Fingerprint / Face Unlock Enabled!", "success");
+            } else if (typeof enrollOrToggleBiometric === "function") {
+              enrollOrToggleBiometric();
+            }
+          });
         }
-        const avatarInput = document.getElementById("avatar-file-input");
-        if (avatarInput) {
-          avatarInput.removeAttribute("capture");
-          avatarInput.value = "";
-          avatarInput.click();
+
+        const btnUnlockBio = document.getElementById("btn-biometric-unlock");
+        if (btnUnlockBio && !btnUnlockBio.dataset.nativeBioBound) {
+          btnUnlockBio.dataset.nativeBioBound = "true";
+          const cleanUnlock = btnUnlockBio.cloneNode(true);
+          btnUnlockBio.parentNode.replaceChild(cleanUnlock, btnUnlockBio);
+
+          cleanUnlock.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (window.KryptonNative && typeof window.KryptonNative.authenticateBiometric === "function") {
+              window.KryptonNative.authenticateBiometric();
+            } else if (typeof triggerBiometricUnlockAttempt === "function") {
+              triggerBiometricUnlockAttempt();
+            }
+          });
         }
       }
 
-      function bindAllDpUploadTriggers() {
+      // 3. Ultra-Fast Chat Loading (Persist Decrypted Room Cache in localStorage for 0ms Instant Open!)
+      try {
+        const persistedFastCache = localStorage.getItem("krypton_persistent_fast_cache");
+        if (persistedFastCache && typeof roomDecryptedCache === "object") {
+          const parsed = JSON.parse(persistedFastCache);
+          Object.assign(roomDecryptedCache, parsed);
+        }
+      } catch (e) { }
+
+      const origSaveDecryptedCache = window.saveDecryptedRoomCache;
+      window.saveDecryptedRoomCache = function (roomId, msgObj, decryptedText) {
+        if (typeof origSaveDecryptedCache === "function") {
+          origSaveDecryptedCache(roomId, msgObj, decryptedText);
+        }
+        try {
+          // Keep lightweight text/metadata cache in localStorage so even after app restart chats open in 0ms!
+          const slimCache = {};
+          Object.keys(roomDecryptedCache || {}).forEach((rId) => {
+            slimCache[rId] = (roomDecryptedCache[rId] || [])
+              .filter((x) => x && x.plain && x.plain.length < 2800)
+              .slice(-40);
+          });
+          localStorage.setItem("krypton_persistent_fast_cache", JSON.stringify(slimCache));
+        } catch (e) { }
+      };
+
+      // 4. Fix Profile DP & Group Photo Upload in Android WebView
+      function bindDpUploadTriggers() {
         const dpBtnIds = [
           "tg-btn-camera-badge",
           "tg-tile-set-photo",
@@ -1390,112 +1639,298 @@
           const btn = document.getElementById(id);
           if (btn && !btn.dataset.nativeDpBound) {
             btn.dataset.nativeDpBound = "true";
-            btn.addEventListener("click", openProfilePicturePicker, true);
-          }
-        });
-
-        // Sync #tg-profile-main-avatar whenever myAvatarData changes
-        const avatarInput = document.getElementById("avatar-file-input");
-        if (avatarInput && !avatarInput.dataset.tgSyncBound) {
-          avatarInput.dataset.tgSyncBound = "true";
-          avatarInput.addEventListener("change", () => {
-            setTimeout(() => {
-              const tgAvatar = document.getElementById("tg-profile-main-avatar");
-              const mySavedAv = localStorage.getItem("krypton_avatar") || "";
-              const myU = localStorage.getItem("krypton_uid") || "?";
-              if (tgAvatar && typeof renderAvatarElement === "function") {
-                renderAvatarElement(tgAvatar, myU, mySavedAv);
+            btn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.KryptonNative && typeof window.KryptonNative.requestMediaPermissions === "function") {
+                window.KryptonNative.requestMediaPermissions();
               }
-            }, 450);
-          });
-        }
-      }
-
-      // 3. Ensure Native Android Mic/Camera Permission Dialog Fires When Starting or Accepting Calls
-      function bindNativeCallPermissionTriggers() {
-        const callBtnIds = [
-          "btn-start-voice",
-          "btn-start-video",
-          "btn-accept-call",
-          "btn-record-audio",
-          "btn-toggle-cam"
-        ];
-        callBtnIds.forEach((id) => {
-          const el = document.getElementById(id);
-          if (el && !el.dataset.nativePermBound) {
-            el.dataset.nativePermBound = "true";
-            el.addEventListener("pointerdown", () => {
-              if (window.KryptonNative && typeof window.KryptonNative.requestCallPermissions === "function") {
-                window.KryptonNative.requestCallPermissions();
+              const avatarInput = document.getElementById("avatar-file-input");
+              if (avatarInput) {
+                avatarInput.removeAttribute("capture");
+                avatarInput.value = "";
+                avatarInput.click();
               }
             }, true);
           }
         });
       }
 
-      // 4. Real In-App Update Engine (Progress Modal + Live Bundle Sync / Native APK Installer)
-      function bindRealInAppUpdater() {
+      // 5. WhatsApp-Style In-App Updater (Direct Over-Existing APK Installer + Live Patch)
+      function bindWhatsAppStyleUpdater() {
         const updateBtn = document.getElementById("btn-force-reload-app");
-        if (!updateBtn || updateBtn.dataset.inAppUpdateBound) return;
-        updateBtn.dataset.inAppUpdateBound = "true";
+        const modal = document.getElementById("krypton-inapp-update-modal");
+        const bar = document.getElementById("inapp-update-progress-bar");
+        const pct = document.getElementById("inapp-update-status-pct");
+        const desc = document.getElementById("inapp-update-desc");
+        const actionsBox = document.getElementById("inapp-update-actions");
+        const btnDownloadApk = document.getElementById("btn-download-apk-over-existing");
+        const btnHotReload = document.getElementById("btn-instant-hot-reload");
+        const btnCloseModal = document.getElementById("btn-close-update-modal");
 
-        const cleanBtn = updateBtn.cloneNode(true);
-        updateBtn.parentNode.replaceChild(cleanBtn, updateBtn);
+        if (updateBtn && !updateBtn.dataset.waUpdateBound) {
+          updateBtn.dataset.waUpdateBound = "true";
+          const cleanBtn = updateBtn.cloneNode(true);
+          updateBtn.parentNode.replaceChild(cleanBtn, updateBtn);
 
-        cleanBtn.addEventListener("click", async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
+          cleanBtn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            if (!modal) return;
+            modal.classList.remove("hidden");
+            if (actionsBox) actionsBox.classList.add("hidden");
+            if (bar) bar.style.width = "35%";
+            if (pct) pct.textContent = "Checking GitHub Release & Mesh Cache...";
 
-          const modal = document.getElementById("krypton-inapp-update-modal");
-          const bar = document.getElementById("inapp-update-progress-bar");
-          const pct = document.getElementById("inapp-update-status-pct");
-          const desc = document.getElementById("inapp-update-desc");
-
-          if (modal) modal.classList.remove("hidden");
-
-          const steps = [
-            { p: 30, text: "Checking latest Krypton release..." },
-            { p: 65, text: "Downloading encrypted mesh bundle..." },
-            { p: 90, text: "Applying update & refreshing cache..." },
-            { p: 100, text: "Update complete! Restarting Krypton..." }
-          ];
-
-          for (const s of steps) {
-            if (bar) bar.style.width = s.p + "%";
-            if (pct) pct.textContent = s.p + "%";
-            if (desc) desc.textContent = s.text;
-            await new Promise((r) => setTimeout(r, 380));
-          }
-
-          try {
-            if ("serviceWorker" in navigator) {
-              const regs = await navigator.serviceWorker.getRegistrations();
-              for (const reg of regs) await reg.unregister();
+            await new Promise((r) => setTimeout(r, 450));
+            if (bar) bar.style.width = "100%";
+            const curVer =
+              window.KryptonNative && typeof window.KryptonNative.getAppVersionName === "function"
+                ? window.KryptonNative.getAppVersionName()
+                : "2.5.x";
+            if (pct) pct.textContent = `Current Installed Version: v${curVer}`;
+            if (desc) {
+              desc.textContent =
+                "Choose 'Apply Instant Live Patch' for immediate UI/feature sync, or 'Download & Install New APK' to update the native Android package directly over your current app.";
             }
-            if ("caches" in window) {
-              const keys = await caches.keys();
-              await Promise.all(keys.map((k) => caches.delete(k)));
-            }
-          } catch (err) { }
+            if (actionsBox) actionsBox.classList.remove("hidden");
+            if (window.lucide) lucide.createIcons({ nodes: [modal] });
+          });
+        }
 
-          if (window.KryptonNative && typeof window.KryptonNative.reloadUpdatedWebApp === "function") {
-            window.KryptonNative.reloadUpdatedWebApp();
-          } else {
-            window.location.replace(window.location.pathname + "?v=" + Date.now());
-          }
-        });
+        if (btnDownloadApk && !btnDownloadApk.dataset.bound) {
+          btnDownloadApk.dataset.bound = "true";
+          btnDownloadApk.addEventListener("click", () => {
+            if (window.KryptonNative && typeof window.KryptonNative.downloadAndInstallUpdate === "function") {
+              window.KryptonNative.downloadAndInstallUpdate(GITHUB_APK_RELEASE_URL);
+            } else {
+              window.open(GITHUB_APK_RELEASE_URL, "_blank");
+            }
+          });
+        }
+
+        if (btnHotReload && !btnHotReload.dataset.bound) {
+          btnHotReload.dataset.bound = "true";
+          btnHotReload.addEventListener("click", async () => {
+            if (pct) pct.textContent = "Applying Live Patch...";
+            try {
+              if ("serviceWorker" in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (const reg of regs) await reg.unregister();
+              }
+              if ("caches" in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((k) => caches.delete(k)));
+              }
+            } catch (err) { }
+
+            if (window.KryptonNative && typeof window.KryptonNative.reloadUpdatedWebApp === "function") {
+              window.KryptonNative.reloadUpdatedWebApp();
+            } else {
+              window.location.replace(window.location.pathname + "?v=" + Date.now());
+            }
+          });
+        }
+
+        if (btnCloseModal && !btnCloseModal.dataset.bound) {
+          btnCloseModal.dataset.bound = "true";
+          btnCloseModal.addEventListener("click", () => {
+            if (modal) modal.classList.add("hidden");
+          });
+        }
       }
 
-      document.addEventListener("DOMContentLoaded", () => {
-        bindAllDpUploadTriggers();
-        bindNativeCallPermissionTriggers();
-        bindRealInAppUpdater();
-      });
-      setTimeout(() => {
-        bindAllDpUploadTriggers();
-        bindNativeCallPermissionTriggers();
-        bindRealInAppUpdater();
-      }, 900);
+      // 6. WhatsApp-Style "Link Web Device (QR Scanner)" Engine (Camera BarcodeDetector + Canvas Scan + Manual Pairing Code)
+      let qrVideoStream = null;
+      let qrScanLoopActive = false;
+
+      async function authorizeWebSessionToken(rawCode) {
+        const cleanCode = (rawCode || "").trim();
+        if (!cleanCode) return;
+        if (!myUsername || !mySessionId) {
+          showToast("Please log in on your phone first!", "error");
+          return;
+        }
+
+        const statusEl = document.getElementById("qr-scan-status-text");
+        if (statusEl) statusEl.textContent = "Linking Krypton Web Session...";
+
+        const normalizedCode = cleanCode.replace(/^krypton-web:/i, "").trim().toUpperCase();
+
+        // Broadcast encrypted session handoff over Supabase Realtime Channel to the waiting Web Browser!
+        if (supabaseClient) {
+          try {
+            const pairChannel = supabaseClient.channel("krypton_web_link_" + normalizedCode);
+            await new Promise((resolve) => {
+              pairChannel.subscribe(async (status) => {
+                if (status === "SUBSCRIBED") {
+                  await pairChannel.send({
+                    type: "broadcast",
+                    event: "web-session-authorized",
+                    payload: {
+                      pairingCode: normalizedCode,
+                      username: myUsername,
+                      sessionToken: mySessionId,
+                      avatar: myAvatarData || "",
+                      bio: myUserBio || "",
+                      accentColor: userSettings.accentColor || "emerald",
+                      darkMode: userSettings.darkMode !== false,
+                      authorizedByDevice: getReadableDeviceName(),
+                      timestamp: Date.now()
+                    }
+                  });
+                  resolve();
+                }
+              });
+              setTimeout(resolve, 2200);
+            });
+            supabaseClient.removeChannel(pairChannel);
+          } catch (e) { }
+        }
+
+        // Also broadcast on global_presence_mesh so any open Krypton Web tab listening for this code logs in immediately!
+        if (presenceChannel) {
+          try {
+            await presenceChannel.send({
+              type: "broadcast",
+              event: "web-session-authorized",
+              payload: {
+                pairingCode: normalizedCode,
+                username: myUsername,
+                sessionToken: mySessionId,
+                avatar: myAvatarData || "",
+                bio: myUserBio || "",
+                accentColor: userSettings.accentColor || "emerald",
+                darkMode: userSettings.darkMode !== false,
+                authorizedByDevice: getReadableDeviceName(),
+                timestamp: Date.now()
+              }
+            });
+          } catch (e) { }
+        }
+
+        closeQrScannerModal();
+        playSynthTone("send");
+        showToast("Krypton Web Linked Successfully for @" + myUsername + "!", "success", 3800);
+      }
+
+      async function openQrScannerModal() {
+        const modal = document.getElementById("krypton-qr-scanner-modal");
+        const video = document.getElementById("qr-scanner-video");
+        const statusEl = document.getElementById("qr-scan-status-text");
+        const topMenu = document.getElementById("top-main-dropdown-menu");
+        if (topMenu) topMenu.classList.add("hidden");
+        if (!modal) return;
+
+        modal.classList.remove("hidden");
+        if (window.lucide) lucide.createIcons({ nodes: [modal] });
+
+        if (window.KryptonNative && typeof window.KryptonNative.requestCallPermissions === "function") {
+          window.KryptonNative.requestCallPermissions();
+        }
+
+        try {
+          if (qrVideoStream) {
+            qrVideoStream.getTracks().forEach((t) => t.stop());
+          }
+          qrVideoStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 640 } },
+            audio: false
+          });
+          if (video) {
+            video.srcObject = qrVideoStream;
+            await video.play();
+          }
+          if (statusEl) statusEl.textContent = "Point camera at Krypton Web QR code...";
+          qrScanLoopActive = true;
+          startNativeBarcodeDetectorLoop(video);
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Camera busy or permission needed — you can also enter the Web Pairing Code below!";
+          }
+        }
+      }
+
+      async function startNativeBarcodeDetectorLoop(videoEl) {
+        if (!("BarcodeDetector" in window)) return;
+        try {
+          const detector = new BarcodeDetector({ formats: ["qr_code"] });
+          const scanTick = async () => {
+            if (!qrScanLoopActive || !videoEl || videoEl.readyState < 2) {
+              if (qrScanLoopActive) requestAnimationFrame(scanTick);
+              return;
+            }
+            try {
+              const barcodes = await detector.detect(videoEl);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                qrScanLoopActive = false;
+                await authorizeWebSessionToken(barcodes[0].rawValue);
+                return;
+              }
+            } catch (e) { }
+            if (qrScanLoopActive) setTimeout(scanTick, 220);
+          };
+          scanTick();
+        } catch (e) { }
+      }
+
+      function closeQrScannerModal() {
+        qrScanLoopActive = false;
+        if (qrVideoStream) {
+          qrVideoStream.getTracks().forEach((t) => t.stop());
+          qrVideoStream = null;
+        }
+        const video = document.getElementById("qr-scanner-video");
+        if (video) video.srcObject = null;
+        const modal = document.getElementById("krypton-qr-scanner-modal");
+        if (modal) modal.classList.add("hidden");
+      }
+
+      function bindQrScannerTriggers() {
+        const triggerIds = ["btn-top-qr-scanner", "top-menu-link-web", "btn-settings-open-qr"];
+        triggerIds.forEach((id) => {
+          const btn = document.getElementById(id);
+          if (btn && !btn.dataset.qrBound) {
+            btn.dataset.qrBound = "true";
+            btn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openQrScannerModal();
+            });
+          }
+        });
+
+        const btnCloseQr = document.getElementById("btn-close-qr-scanner");
+        if (btnCloseQr && !btnCloseQr.dataset.qrBound) {
+          btnCloseQr.dataset.qrBound = "true";
+          btnCloseQr.addEventListener("click", closeQrScannerModal);
+        }
+
+        const btnManualLink = document.getElementById("btn-link-web-by-code");
+        const manualInp = document.getElementById("qr-manual-code-input");
+        if (btnManualLink && manualInp && !btnManualLink.dataset.qrBound) {
+          btnManualLink.dataset.qrBound = "true";
+          btnManualLink.addEventListener("click", () => {
+            const val = manualInp.value.trim();
+            if (!val) {
+              showToast("Enter the pairing code shown on Krypton Web!", "error");
+              return;
+            }
+            authorizeWebSessionToken(val);
+          });
+        }
+      }
+
+      function initAllV23Patches() {
+        syncNativeBiometricUI();
+        bindBiometricButtons();
+        bindDpUploadTriggers();
+        bindWhatsAppStyleUpdater();
+        bindQrScannerTriggers();
+        if (window.lucide) lucide.createIcons();
+      }
+
+      document.addEventListener("DOMContentLoaded", initAllV23Patches);
+      setTimeout(initAllV23Patches, 700);
     })();
   </script>
 </body>

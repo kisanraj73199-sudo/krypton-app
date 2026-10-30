@@ -3,15 +3,21 @@ package com.krypton.mesh;
 import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.app.KeyguardManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -23,6 +29,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
@@ -35,8 +42,10 @@ import java.util.List;
 public class MainActivity extends BridgeActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final String CHANNEL_ID = "krypton_native_alerts";
     private ValueCallback<Uri[]> filePathCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
+    private ActivityResultLauncher<Intent> biometricLauncher;
     private PermissionRequest pendingWebRtcRequest;
     private long downloadId = -1;
 
@@ -71,12 +80,32 @@ public class MainActivity extends BridgeActivity {
             }
         );
 
+        // 3. Native Android Hardware Biometric / Fingerprint / Face / Credential Unlock Launcher
+        biometricLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (this.bridge != null && this.bridge.getWebView() != null) {
+                    if (result.getResultCode() == Activity.RESULT_OK) {
+                        this.bridge.getWebView().evaluateJavascript(
+                            "window.onKryptonNativeBiometricResult && window.onKryptonNativeBiometricResult(true);",
+                            null
+                        );
+                    } else {
+                        this.bridge.getWebView().evaluateJavascript(
+                            "window.onKryptonNativeBiometricResult && window.onKryptonNativeBiometricResult(false);",
+                            null
+                        );
+                    }
+                }
+            }
+        );
+
         super.onCreate(savedInstanceState);
 
-        // 3. Prompt Native Android Allow/Deny Popup on First Launch
+        createNativeNotificationChannel();
         checkAndRequestPermissions();
 
-        // 4. Configure WebView for DP Upload, WebRTC Call Popup & In-App Updater
+        // 4. Configure WebView for DP Upload, WebRTC Call Popup, Biometrics & In-App Updater
         if (this.bridge != null && this.bridge.getWebView() != null) {
             WebView webView = this.bridge.getWebView();
             webView.getSettings().setJavaScriptEnabled(true);
@@ -119,10 +148,10 @@ public class MainActivity extends BridgeActivity {
                     if (acceptTypes != null && acceptTypes.length > 0 && acceptTypes[0] != null && !acceptTypes[0].isEmpty() && !acceptTypes[0].contains(".")) {
                         intent.setType(acceptTypes[0]);
                     } else {
-                        intent.setType("*/*");
+                        intent.setType("image/*");
                     }
 
-                    Intent chooserIntent = Intent.createChooser(intent, "Select File or Photo");
+                    Intent chooserIntent = Intent.createChooser(intent, "Select Photo or File");
                     try {
                         fileChooserLauncher.launch(chooserIntent);
                     } catch (Exception e) {
@@ -132,6 +161,21 @@ public class MainActivity extends BridgeActivity {
                     return true;
                 }
             });
+        }
+    }
+
+    private void createNativeNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "Krypton Encrypted Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Notifications for encrypted messages and incoming calls");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
         }
     }
 
@@ -202,6 +246,16 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String getAppVersionName() {
+            try {
+                PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+                return pInfo.versionName != null ? pInfo.versionName : "2.5.0";
+            } catch (Exception e) {
+                return "2.5.0";
+            }
+        }
+
+        @JavascriptInterface
         public void requestCallPermissions() {
             runOnUiThread(() -> checkAndRequestPermissions());
         }
@@ -211,6 +265,67 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> checkAndRequestPermissions());
         }
 
+        // Native Android OS Notification Trigger
+        @JavascriptInterface
+        public void showNativeNotification(String title, String message) {
+            runOnUiThread(() -> {
+                try {
+                    Intent intent = new Intent(MainActivity.this, MainActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    PendingIntent pendingIntent = PendingIntent.getActivity(
+                        MainActivity.this, 0, intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                    );
+
+                    NotificationCompat.Builder builder = new NotificationCompat.Builder(MainActivity.this, CHANNEL_ID)
+                        .setSmallIcon(getApplicationInfo().icon)
+                        .setContentTitle(title)
+                        .setContentText(message)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(true)
+                        .setContentIntent(pendingIntent);
+
+                    NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (manager != null) {
+                        manager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
+                    }
+                } catch (Exception ignored) {}
+            });
+        }
+
+        // Native Android Hardware Biometric / Fingerprint / Face / Device Credential Support
+        @JavascriptInterface
+        public boolean isBiometricAvailable() {
+            try {
+                KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                return km != null && km.isKeyguardSecure();
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public void authenticateBiometric() {
+            runOnUiThread(() -> {
+                try {
+                    KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                    if (km != null && km.isKeyguardSecure()) {
+                        Intent authIntent = km.createConfirmDeviceCredentialIntent(
+                            "Krypton Privacy Shield",
+                            "Use Fingerprint, Face Unlock or Screen Lock to unlock Krypton"
+                        );
+                        if (authIntent != null) {
+                            biometricLauncher.launch(authIntent);
+                            return;
+                        }
+                    }
+                    Toast.makeText(MainActivity.this, "Please set a Fingerprint or Screen Lock in Android Settings first.", Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Biometric prompt error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
         @JavascriptInterface
         public void reloadUpdatedWebApp() {
             runOnUiThread(() -> {
@@ -218,7 +333,7 @@ public class MainActivity extends BridgeActivity {
                     WebView wv = MainActivity.this.bridge.getWebView();
                     wv.clearCache(true);
                     wv.reload();
-                    Toast.makeText(MainActivity.this, "Krypton Updated to Latest Version!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Krypton Updated Successfully!", Toast.LENGTH_SHORT).show();
                 }
             });
         }
@@ -227,14 +342,23 @@ public class MainActivity extends BridgeActivity {
         public void downloadAndInstallUpdate(String apkUrl) {
             runOnUiThread(() -> {
                 try {
-                    Toast.makeText(MainActivity.this, "Downloading Krypton Update...", Toast.LENGTH_LONG).show();
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (!getPackageManager().canRequestPackageInstalls()) {
+                            Toast.makeText(MainActivity.this, "Please allow 'Install unknown apps' for Krypton to auto-update", Toast.LENGTH_LONG).show();
+                            Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                            startActivity(settingsIntent);
+                            return;
+                        }
+                    }
+
+                    Toast.makeText(MainActivity.this, "Downloading Krypton Update...", Toast.LENGTH_SHORT).show();
 
                     File updateFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Krypton-Update.apk");
                     if (updateFile.exists()) updateFile.delete();
 
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
                     request.setTitle("Krypton App Update");
-                    request.setDescription("Downloading latest version...");
+                    request.setDescription("Downloading latest Krypton APK...");
                     request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                     request.setDestinationInExternalFilesDir(MainActivity.this, Environment.DIRECTORY_DOWNLOADS, "Krypton-Update.apk");
 
@@ -247,7 +371,7 @@ public class MainActivity extends BridgeActivity {
                             long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                             if (id == downloadId) {
                                 installApk(updateFile);
-                                unregisterReceiver(this);
+                                try { unregisterReceiver(this); } catch (Exception ignored) {}
                             }
                         }
                     };
@@ -276,6 +400,7 @@ public class MainActivity extends BridgeActivity {
             installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
             installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            installIntent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
             startActivity(installIntent);
         } catch (Exception e) {
             Toast.makeText(this, "Install Trigger Failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
