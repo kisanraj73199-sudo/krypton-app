@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Krypton | Cyber-Glass Encrypted Mesh</title>
+  <meta name="color-scheme" content="light dark" />
+
+  <!-- PWA Meta Tags & Manifest -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Krypton" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css?v=21000" />
+</head>
+
+<body class="dark-theme" data-accent="emerald">
+
+  <!-- Ambient Animated Cyber-Mesh Orbs -->
+  <div class="ambient-mesh-bg" aria-hidden="true">
+    <div class="mesh-orb orb-1"></div>
+    <div class="mesh-orb orb-2"></div>
+    <div class="mesh-orb orb-3"></div>
+  </div>
+
+  <!-- Non-Blocking Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- First-Time Register / Quick Bottom PWA Install Banner -->
+  <div id="pwa-install-banner" class="pwa-install-banner hidden">
+    <img src="icon-192.png" alt="Krypton" class="pwa-banner-icon" />
+    <div class="pwa-banner-text">
+      <span class="pwa-banner-title">Install Krypton App</span>
+      <span class="pwa-banner-sub">Add to Home Screen for instant E2EE access</span>
+    </div>
+    <button id="btn-banner-install-pwa" class="glass-btn-sm btn-save-action" style="padding: 7px 13px;">Install</button>
+    <button id="btn-close-pwa-banner" class="icon-close-btn sm" title="Dismiss">
+      <i data-lucide="x" style="width: 13px; height: 13px;"></i>
+    </button>
+  </div>
+
+  <!-- Privacy Panic Blur & App PIN Lock Overlay (Alt+X / Double Esc / Auto-Lock) -->
+  <div id="app-lock-overlay" class="glass-modal hidden" style="z-index: 99999995; background: rgba(4, 7, 15, 0.88); backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);">
+    <div class="glass-card lock-screen-card" style="max-width: 340px; text-align: center;">
+      <div class="auth-logo-glow">
+        <i data-lucide="shield-lock" class="brand-icon"></i>
+      </div>
+      <h3 style="font-size: 19px; font-weight: 800;">Mesh Privacy Shield</h3>
+      <p id="lock-screen-desc" style="font-size: 12px; color: var(--text-dim);">Screen is encrypted & blurred for your privacy</p>
+      <div id="pin-input-section" class="hidden" style="margin-top: 8px;">
+        <div class="pin-input-with-toggle" style="max-width: 220px; margin: 0 auto;">
+          <input type="password" id="lock-pin-input" maxlength="6" placeholder="••••" class="pin-code-box" autocomplete="off" inputmode="numeric" />
+          <button type="button" class="pin-visibility-toggle" data-pin-target="lock-pin-input" aria-label="Show PIN" title="Show PIN">
+            <i data-lucide="eye"></i>
+          </button>
+        </div>
+        <span id="lock-pin-error" class="status-msg error"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; width: 100%;">
+        <button id="btn-unlock-screen" class="glass-btn primary" style="width: 100%;">
+          <i data-lucide="unlock" style="width: 15px; height: 15px; vertical-align: -2px; margin-right: 5px;"></i>
+          <span>Unlock Mesh</span>
+        </button>
+        <button id="btn-biometric-unlock" type="button" class="glass-btn secondary hidden" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+          <i data-lucide="fingerprint" style="width: 16px; height: 16px; color: var(--accent-primary);"></i>
+          <span>Unlock with Biometrics</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Feature #5: Smart App Lock Setup & Auto-Lock Timer Modal (v14000 Fully Scrollable) -->
+  <div id="smart-lock-setup-modal" class="glass-modal hidden" style="z-index: 9999999;">
+    <div class="glass-card smart-lock-scrollable-card" style="max-width: 425px; max-height: 86dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+      <!-- Pinned Header -->
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="lock-keyhole" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 800;">Smart Privacy Lock & Timer</h3>
+        </div>
+        <button id="btn-close-smart-lock-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- Scrollable Body -->
+      <div class="settings-scroll-body" style="padding: 16px 18px; gap: 14px; overflow-y: auto; flex: 1 1 auto; min-height: 0;">
+        <div class="smart-lock-instructions">
+          <div class="lock-inst-item">
+            <span class="lock-inst-badge">Alt + X</span>
+            <span>Press <strong>Alt+X</strong> or <strong>Double Esc</strong> anytime to instant-blur screen.</span>
+          </div>
+          <div class="lock-inst-item">
+            <span class="lock-inst-badge">Lock Icon</span>
+            <span>Home screen <strong>Lock Icon</strong> locks the app immediately in 1 click.</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="auth-field-label">SET 4-6 DIGIT SECURITY PIN</label>
+          <div class="pin-input-with-toggle">
+            <input type="password" id="modal-smart-pin-input" maxlength="6" placeholder="Enter 4+ digit PIN (leave empty to remove)" autocomplete="off" inputmode="numeric" />
+            <button type="button" class="pin-visibility-toggle" data-pin-target="modal-smart-pin-input" aria-label="Show PIN" title="Show PIN">
+              <i data-lucide="eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-item" id="biometric-setup-row" style="background: var(--glass-card); padding: 9px 12px; border-radius: 13px; border: 1px solid var(--glass-border-subtle);">
+          <div class="setting-text">
+            <span class="setting-title" style="font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="fingerprint" style="width: 14px; height: 14px; color: var(--accent-primary);"></i>
+              <span>Biometric Unlock (Fingerprint / FaceID)</span>
+            </span>
+            <span class="setting-desc" id="biometric-setup-desc" style="font-size: 10.5px;">Use device hardware biometrics alongside your PIN</span>
+          </div>
+          <button type="button" id="btn-enroll-biometric" class="glass-btn-sm btn-save-action" style="padding: 5px 11px;">Enable</button>
+        </div>
+
+        <div class="input-group">
+          <label class="auth-field-label">AUTO-LOCK TIMING (BACKGROUND / MINIMIZE)</label>
+          <div class="autolock-radio-group" id="autolock-options-list">
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="instant" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">Instant on Minimize / Tab Switch</span>
+                <span class="autolock-opt-sub">Locks immediately when you switch tabs or minimize app</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="1m" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">After 1 Minute in Background</span>
+                <span class="autolock-opt-sub">Auto-locks if app stays minimized for 60 seconds</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="5m" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">After 5 Minutes in Background</span>
+                <span class="autolock-opt-sub">Auto-locks if app stays minimized for 5 minutes</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="restart" checked />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">Only on App Restart / Manual Lock</span>
+                <span class="autolock-opt-sub">Requires PIN when opening app or pressing Lock / Alt+X</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pinned Footer -->
+      <div class="modal-actions" style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button id="btn-lock-now-from-modal" class="glass-btn secondary">Lock Screen Now</button>
+        <button id="btn-save-smart-lock-modal" class="glass-btn primary">Save Lock Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature #7: WhatsApp-Style Create / Manage Encrypted Group Modal (v6000) -->
+  <div id="group-create-modal" class="glass-modal hidden" style="z-index: 9999998;">
+    <div class="glass-card group-admin-modal-card" style="max-width: 430px; max-height: 88dvh; display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+      <!-- Pinned Modal Header -->
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 id="group-modal-heading" style="font-size: 16px; font-weight: 800;">Create Encrypted Group</h3>
+        </div>
+        <button id="btn-close-group-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- Scrollable Modal Body -->
+      <div class="settings-scroll-body" style="padding: 16px 18px; gap: 14px;">
+        <!-- Group Avatar & Name Header Card (Mobile-Responsive & Overflow-Proof) -->
+        <div class="settings-profile-card group-profile-header-card" id="group-profile-header-card">
+          <div class="group-avatar-top-row">
+            <div class="settings-avatar-wrap" id="group-avatar-wrap">
+              <div class="avatar lg" id="group-modal-avatar-preview" title="Group Icon">
+                <i data-lucide="users" style="width: 24px; height: 24px;"></i>
+              </div>
+              <button type="button" id="btn-change-group-avatar" class="avatar-edit-badge" title="Change Group Photo (Owner Only)">
+                <i data-lucide="camera" style="width: 13px; height: 13px;"></i>
+              </button>
+              <input type="file" id="group-avatar-file-input" accept="image/*" style="display: none;" />
+            </div>
+            <div id="group-avatar-btn-row" class="group-avatar-btn-col">
+              <button type="button" id="btn-upload-group-photo" class="glass-btn-sm">Upload Icon</button>
+              <button type="button" id="btn-remove-group-photo" class="glass-btn-sm danger">Remove</button>
+            </div>
+          </div>
+
+          <div class="group-fields-stack">
+            <div class="input-group" id="group-name-input-wrap">
+              <label class="auth-field-label">GROUP NAME</label>
+              <input type="text" id="group-name-input" placeholder="e.g. Cyber Squad" maxlength="36" autocomplete="off" />
+            </div>
+            <div class="input-group" id="group-desc-input-wrap">
+              <label class="auth-field-label">GROUP DESCRIPTION / BIO</label>
+              <input type="text" id="group-desc-input" placeholder="Encrypted group rules or topic..." maxlength="90" autocomplete="off" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Friends Search Section (Owner Only - No pre-filled @usernames, Live Search from Connected Friends Only!) -->
+        <div class="input-group" id="group-add-members-section" style="position: relative; margin: 0;">
+          <label class="auth-field-label">ADD FRIENDS TO GROUP (TYPE TO SEARCH YOUR FRIENDS)</label>
+          <input type="text" id="group-members-input" placeholder="Search friend's @username..." autocomplete="off" />
+          <!-- Live Typing Dropdown Suggestions (Strictly Connected Friends Only) -->
+          <div id="group-friends-live-suggestions" class="live-user-suggestions hidden" style="margin-top: 6px; max-height: 165px;"></div>
+          <!-- Selected Friends Staging Chips (Before / During Add) -->
+          <div id="group-friends-chips" class="group-friends-chips"></div>
+        </div>
+
+        <!-- WhatsApp-Style Owner Permissions & Privacy Controls (Owner Only) -->
+        <div id="group-owner-controls-section" class="theme-picker-block" style="gap: 10px; padding: 12px 14px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="shield" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+            <span class="setting-title" style="font-size: 12.5px; color: var(--accent-primary);">GROUP ADMIN CONTROLS (OWNER ONLY)</span>
+          </div>
+
+          <div class="setting-item" style="padding-top: 4px;">
+            <div class="setting-text">
+              <span class="setting-title" style="font-size: 12.5px;">Only Owner Can Send Messages</span>
+              <span class="setting-desc" style="font-size: 10.5px;">Turn ON to mute all members (Announcement Mode)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-group-only-owner-msg" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item" style="padding-top: 6px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="font-size: 12.5px;">Allow Members to See Member List</span>
+              <span class="setting-desc" style="font-size: 10.5px;">Turn OFF to hide group participants from members</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-group-show-members" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Group Members Directory Section (Respects Owner's Visibility Permission) -->
+        <div id="group-members-list-section" class="input-group" style="margin: 0;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <label class="auth-field-label" style="margin: 0;" id="group-members-count-label">GROUP MEMBERS</label>
+            <span id="group-owner-badge-pill" class="online-pill-badge" style="font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i data-lucide="shield-check" style="width: 11px; height: 11px;"></i><span>Admin</span></span>
+          </div>
+          <div id="group-current-members-list" class="group-members-directory"></div>
+        </div>
+      </div>
+
+      <!-- Pinned Modal Footer Actions -->
+      <div class="modal-actions" style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button type="button" id="btn-cancel-group-modal" class="glass-btn secondary">Close</button>
+        <button type="button" id="btn-confirm-group-modal" class="glass-btn primary">Create Group</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature #8: Krypton AI Assistant Interactive Help Drawer (With Hinglish / English Language Toggle) -->
+  <div id="krypton-ai-drawer" class="glass-modal hidden" style="z-index: 99999992;">
+    <div class="glass-card krypton-ai-card">
+      <div class="ai-drawer-header">
+        <div class="brand-inline">
+          <div class="ai-avatar-orb">
+            <span class="ai-orb-ring"></span>
+            <span class="ai-orb-core">✨</span>
+          </div>
+          <div>
+            <h3 style="font-size: 15.5px; font-weight: 800;">Krypton AI Assistant</h3>
+            <span class="ai-privacy-badge" id="ai-privacy-subtext">100% Local Sandbox • Zero User Data Access</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <!-- Language Selector Toggle (Hinglish | English) -->
+          <div class="ai-lang-toggle" id="ai-lang-toggle">
+            <button type="button" class="ai-lang-btn active" data-ai-lang="hinglish">Hinglish</button>
+            <button type="button" class="ai-lang-btn" data-ai-lang="english">English</button>
+          </div>
+          <button id="btn-close-ai-drawer" class="icon-close-btn sm" title="Close AI Guide">
+            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="ai-quick-chips-bar" id="ai-quick-chips"></div>
+
+      <div class="ai-chat-feed" id="ai-chat-feed"></div>
+
+      <div class="ai-input-row">
+        <input type="text" id="ai-question-input" placeholder="Ask about any icon or feature..." autocomplete="off" />
+        <button id="btn-ask-ai" class="send-btn" style="height: 38px; padding: 0 14px;">
+          <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Non-Blocking Confirm / Prompt Dialog Modal -->
+  <div id="custom-dialog-modal" class="glass-modal hidden" style="z-index: 9999998;">
+    <div class="glass-card dialog-card">
+      <div class="brand">
+        <div class="dialog-icon-circle" id="dialog-icon-wrap">
+          <i data-lucide="shield-alert" id="dialog-icon"></i>
+        </div>
+        <h3 id="dialog-title" style="margin-top: 6px; font-size: 17px;">Confirm Action</h3>
+        <p id="dialog-message" style="margin-top: 4px; line-height: 1.45;"></p>
+      </div>
+      <div id="dialog-input-wrap" class="input-group hidden" style="margin-top: 6px;">
+        <input type="text" id="dialog-input" placeholder="Type here..." autocomplete="off" />
+      </div>
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="dialog-cancel-btn" class="glass-btn secondary">Cancel</button>
+        <button id="dialog-confirm-btn" class="glass-btn primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Image & Profile Picture Lightbox Viewer Modal -->
+  <div id="image-viewer-modal" class="glass-modal hidden">
+    <div class="image-viewer-top-bar">
+      <span id="image-viewer-caption" class="image-viewer-caption"></span>
+      <div style="display: flex; gap: 10px;">
+        <a id="btn-download-image-viewer" class="image-viewer-action-btn" download="krypton-image.jpg" title="Download Image">
+          <i data-lucide="download"></i>
+        </a>
+        <button id="btn-close-image-viewer" class="image-viewer-action-btn" title="Close Viewer (Esc)">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="image-viewer-content">
+      <img id="image-viewer-img" src="" alt="Full Screen Attachment" />
+    </div>
+  </div>
+
+  <!-- Settings & Theme Customization Modal -->
+  <div id="settings-modal" class="glass-modal hidden">
+    <div class="glass-card settings-card" id="settings-dialog-card">
+
+      <!-- PINNED HEADER -->
+      <div class="settings-pinned-header">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="sparkles" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3>Themes, Privacy & Security</h3>
+        </div>
+        <button id="btn-close-settings" class="icon-close-btn" title="Close">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <!-- SCROLLABLE CONTENT BODY -->
+      <div class="settings-scroll-body">
+
+        <!-- Profile Management Card -->
+        <div class="settings-profile-card hidden" aria-hidden="true">
+          <div class="settings-avatar-wrap">
+            <div class="avatar lg" id="settings-preview-avatar" style="cursor: zoom-in;" title="Click to view full size">?</div>
+            <button id="btn-change-avatar" class="avatar-edit-badge" title="Change Profile Picture">
+              <i data-lucide="camera" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+
+          <div class="settings-user-meta" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+              <div class="settings-username-row" id="settings-username-row">
+                <span class="settings-username-text" id="settings-display-uid">@username</span>
+                <input type="text" id="settings-username-edit-input" class="hidden settings-edit-input"
+                  autocomplete="username" placeholder="new_username" />
+                <div class="settings-username-actions">
+                  <button type="button" id="copy-id-btn" class="tool-btn username-inline-btn" title="Copy Username">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="btn-edit-username" class="tool-btn username-inline-btn" title="Edit Username">
+                    <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="btn-save-username" class="glass-btn-sm hidden btn-save-action username-save-btn">Save</button>
+                  <button type="button" id="btn-cancel-username" class="tool-btn username-inline-btn hidden" title="Cancel Rename">
+                    <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+              <span id="settings-username-error"
+                style="color: var(--danger-color); font-size: 11px; font-weight: 600; display: none;">Invalid username</span>
+            </div>
+
+            <div class="settings-avatar-action-row" style="display: flex; gap: 6px; width: 100%;">
+              <button id="btn-upload-avatar-trigger" class="glass-btn-sm"
+                style="flex: 1; padding: 6px 8px; text-align: center;">Upload Photo</button>
+              <button id="btn-remove-avatar" class="glass-btn-sm danger"
+                style="flex: 1; padding: 6px 8px; text-align: center;">Remove</button>
+              <input type="file" id="avatar-file-input" accept="image/*" style="display: none;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-list">
+          <!-- User Bio / Description Input (Moved to Dedicated Profile Dashboard) -->
+          <div class="setting-item hidden" aria-hidden="true" style="flex-direction: column; align-items: stretch; gap: 6px;">
+            <div class="setting-text">
+              <span class="setting-title">About / Bio</span>
+              <span class="setting-desc">Visible on your profile card across the mesh</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="settings-bio-input" placeholder="e.g. Encrypted, offline & untraceable."
+                maxlength="80" class="settings-bio-input" autocomplete="off" />
+              <button id="btn-save-bio" class="glass-btn-sm btn-save-action" style="padding: 6px 14px;">Save</button>
+            </div>
+          </div>
+
+          <!-- Multi-Color Accent Theme Engine (v15000: Icon Button Toggle + Pure Circular Color Swatches) -->
+          <div class="setting-item theme-picker-block" style="padding: 11px 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px;">
+              <div class="setting-text">
+                <span class="setting-title">Cyber Accent Theme</span>
+                <span class="setting-desc">Tap palette icon to choose your neon accent color</span>
+              </div>
+              <button type="button" id="btn-toggle-theme-circles" class="theme-palette-trigger-btn" title="Choose Accent Color">
+                <span class="active-theme-dot-indicator"></span>
+                <i data-lucide="palette" style="width: 16px; height: 16px;"></i>
+              </button>
+            </div>
+
+            <div class="theme-swatches-circles-row hidden" id="theme-swatches-container">
+              <button type="button" class="theme-swatch-btn circle-only active" data-theme-color="emerald" title="Krypton Emerald">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #10b981, #059669);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="violet" title="Cyber Amethyst">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #8b5cf6, #ec4899);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="ocean" title="Electric Cobalt">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="crimson" title="Crimson Pulse">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #f43f5e, #fb7185);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="amber" title="Solar Gold">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #f59e0b, #ea580c);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="aurora" title="Aurora Mint">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #14b8a6, #6366f1);"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- App PIN Lock & Smart Privacy Timer (v15000: Single Unified Button that opens Smart Privacy Lock & Timer) -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title">App PIN Lock & Auto-Lock Timer</span>
+              <span class="setting-desc" id="settings-lock-status-sub">Configure PIN, Biometrics & Smart Auto-Lock Timer</span>
+            </div>
+            <button type="button" id="btn-open-smart-lock-from-settings" class="glass-btn-sm btn-save-action" style="padding: 7px 13px; display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="shield-lock" style="width: 14px; height: 14px;"></i>
+              <span id="btn-open-smart-lock-label">Setup Lock</span>
+            </button>
+            <!-- Hidden legacy inputs kept so existing JS references never throw null errors -->
+            <input type="password" id="settings-pin-input" class="hidden" aria-hidden="true" />
+            <button type="button" id="btn-save-pin" class="hidden" aria-hidden="true"></button>
+          </div>
+
+          <!-- Security Info Badge -->
+          <div class="setting-item security-banner-box">
+            <div class="setting-text">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="shield-check" style="width: 16px; height: 16px; color: var(--accent-primary);"></i>
+                <span class="setting-title" style="font-size: 13px;">Zero-Knowledge Protocol</span>
+              </div>
+              <span class="setting-desc" style="color: var(--text-main); font-weight: 600;">AES-GCM 256-bit + Permanent Session-Token Identity</span>
+            </div>
+          </div>
+
+          <!-- v10000: Active Devices & Session Management -->
+          <div class="setting-item theme-picker-block" id="device-sessions-card" style="gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div class="setting-text">
+                <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="smartphone" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+                  <span>Active Devices & Sessions</span>
+                </span>
+                <span class="setting-desc">Monitor logged-in devices & remotely terminate sessions</span>
+              </div>
+              <button type="button" id="btn-logout-other-devices" class="glass-btn-sm danger" style="padding: 5px 9px; font-size: 10.5px; white-space: nowrap;">Logout Others</button>
+            </div>
+            <div id="active-devices-list" class="active-devices-list"></div>
+          </div>
+
+          <!-- v20000: Blocked Users Manager (Unblock & Reconnect Even After Deleting Chat!) -->
+          <div class="setting-item theme-picker-block" id="blocked-users-settings-card" style="gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div class="setting-text">
+                <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="user-x" style="width: 15px; height: 15px; color: var(--danger-color);"></i>
+                  <span>Blocked Users (<span id="blocked-users-count-badge">0</span>)</span>
+                </span>
+                <span class="setting-desc">Unblock users anytime — even if you deleted their chat</span>
+              </div>
+              <button type="button" id="btn-unblock-all-users" class="glass-btn-sm hidden" style="padding: 5px 9px; font-size: 10.5px; white-space: nowrap;">Unblock All</button>
+            </div>
+            <div id="settings-blocked-users-list" class="active-devices-list"></div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Obsidian Dark Mode</span>
+              <span class="setting-desc">Switch between Deep OLED Dark and Frosted Pearl Light</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-dark-mode" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Sound Effects</span>
+              <span class="setting-desc">Subtle WebAudio synthesizer cues for messages & calls</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-sound-fx" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Feature #5: Background Web Push Notifications -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Background Push Alerts</span>
+              <span class="setting-desc">Receive desktop/mobile notifications for new messages & calls</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-push-notifications" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Hide Global Lounge</span>
+              <span class="setting-desc">Completely hide public anonymous group feed</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-hide-global" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- v21000: App-Wide Anti-Screenshot & Screen Recording Protection -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="shield-ban" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+                <span>Block Screenshots & Screen Recording</span>
+              </span>
+              <span class="setting-desc">Protect chats, media & calls from screenshots, screen recorders & app-switcher previews</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-anti-capture" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Online Presence Indicator</span>
+              <span class="setting-desc">Turn off to enter Ghost Mode (hide online status)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-online-presence" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Install as Native App (PWA Home Screen) Option -->
+          <div class="setting-item" id="setting-item-install-pwa" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--accent-primary);">Install Krypton as App</span>
+              <span class="setting-desc" id="settings-install-desc">Add Krypton to your Home Screen for full-screen app experience</span>
+            </div>
+            <button id="btn-settings-install-pwa" class="glass-btn-sm btn-save-action" style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+              <span id="btn-settings-install-label">Install App</span>
+            </button>
+          </div>
+
+          <!-- Force Update & Hard Refresh Cache Feature -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--accent-primary);">Force App Update & Reload</span>
+              <span class="setting-desc">Clear PWA service worker cache & fetch latest version</span>
+            </div>
+            <button id="btn-force-reload-app" class="glass-btn-sm btn-save-action" style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i>
+              <span>Update Now</span>
+            </button>
+          </div>
+
+          <!-- Feedback & Support Option -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title">Feedback & Support</span>
+              <span class="setting-desc">Send bug reports, feedback or feature ideas</span>
+            </div>
+            <button id="btn-send-feedback" class="glass-btn-sm" style="padding: 6px 14px;">Feedback</button>
+          </div>
+
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--danger-color);">Logout Account</span>
+              <span class="setting-desc">Disconnect session from this device</span>
+            </div>
+            <button id="btn-logout" class="glass-btn-sm danger" style="padding: 6px 14px;">Logout</button>
+          </div>
+
+          <!-- Static Delete Account Permanently Row (v11000) -->
+          <div class="setting-item" id="setting-item-delete-acc" style="padding-top: 12px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--danger-color);">Delete Account Permanently</span>
+              <span class="setting-desc">Wipe all your messages, profile, and data forever</span>
+            </div>
+            <button type="button" id="btn-delete-account-perm" class="glass-btn-sm danger" style="padding: 6px 12px; font-weight: 700;">Delete</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Identity Login / Register Modal -->
+  <div id="auth-modal" class="glass-modal">
+    <div class="glass-card auth-card">
+      <div class="brand">
+        <div class="auth-logo-glow">
+          <i data-lucide="shield-check" class="brand-icon"></i>
+        </div>
+        <h2 id="modal-title" style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Krypton</h2>
+        <p id="modal-desc" style="margin-bottom: 10px;">Next-Gen Encrypted Glass Mesh</p>
+        <span class="encryption-pill">
+          <i data-lucide="lock" style="width: 11px; height: 11px;"></i>
+          AES-GCM 256-bit Zero-Knowledge
+        </span>
+      </div>
+
+      <div class="input-group" style="margin-top: 14px;">
+        <label class="auth-field-label">YOUR USERNAME</label>
+        <div class="auth-input-wrap">
+          <i data-lucide="at-sign" class="auth-input-icon"></i>
+          <input type="text" id="username-input" placeholder="e.g. lucia" autocomplete="username" />
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top: 8px;">
+        <label class="auth-field-label">SECURE PASSWORD</label>
+        <div class="auth-input-wrap">
+          <i data-lucide="key-round" class="auth-input-icon"></i>
+          <input type="password" id="password-input" placeholder="Enter your password" autocomplete="current-password"
+            data-lpignore="true" />
+        </div>
+        <span id="username-status" class="status-msg"></span>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="btn-login" class="glass-btn primary" style="width: 100%; padding: 13px;">
+          <span>Authenticate / Register</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Call Permission Modal -->
+  <div id="call-perm-modal" class="glass-modal hidden" style="z-index: 999999;">
+    <div class="glass-card call-card">
+      <div class="brand">
+        <div class="incoming-call-ring">
+          <i data-lucide="phone-incoming" class="brand-icon pulse"></i>
+        </div>
+        <h3 id="incoming-caller-title" style="margin-top: 10px;">Incoming Call</h3>
+        <p id="incoming-caller-desc" style="margin-top: 4px;">@user is requesting an encrypted tunnel</p>
+      </div>
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="btn-decline-call" class="glass-btn call-decline">Decline</button>
+        <button id="btn-accept-call" class="glass-btn call-accept">Accept Call</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature v17000: Forward Message to Friends / Groups / Saved Messages Modal -->
+  <div id="forward-msg-modal" class="glass-modal hidden" style="z-index: 9999997;">
+    <div class="glass-card" style="max-width: 410px; max-height: 82dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+      <div class="settings-pinned-header" style="padding: 14px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="forward" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 style="font-size: 15.5px; font-weight: 800;">Forward Message To...</h3>
+        </div>
+        <button type="button" id="btn-close-forward-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div style="padding: 10px 16px 6px 16px; border-bottom: 1px solid var(--glass-border-subtle);">
+        <div class="krypton-search-pill-box" style="height: 37px;">
+          <i data-lucide="search" class="krypton-search-pill-icon"></i>
+          <input type="text" id="forward-search-input" placeholder="Search friends or groups..." autocomplete="off" style="background:transparent; border:none; color:var(--text-main); width:100%; outline:none; font-size:13px;" />
+        </div>
+      </div>
+
+      <div id="forward-targets-list" class="settings-scroll-body" style="padding: 10px 14px; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0;"></div>
+
+      <div class="modal-actions" style="padding: 11px 16px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button type="button" id="btn-cancel-forward-modal" class="glass-btn secondary">Cancel</button>
+        <button type="button" id="btn-confirm-forward-send" class="glass-btn primary">Forward Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WebRTC Call Screen (v19000: Clean Single Fullscreen Icon in Video Frame + Single Add Member Icon Next to Cut Call + Anti-Screenshot Shield) -->
+  <div id="call-screen-overlay" class="glass-modal hidden" style="z-index: 999998;">
+    <div class="call-interface-box" id="call-interface-card">
+
+      <!-- Anti-Screenshot / Screen Recording Privacy Shield Overlay -->
+      <div id="call-capture-shield" class="call-capture-shield hidden">
+        <i data-lucide="shield-alert" style="width: 38px; height: 38px; color: var(--danger-color);"></i>
+        <h4>Screenshot & Screen Recording Blocked</h4>
+        <p>Video stream is protected by Krypton Privacy Shield.</p>
+      </div>
+
+      <div class="call-peer-info" id="call-peer-info-header">
+        <div class="avatar lg" id="call-avatar">?</div>
+        <div class="call-peer-text-stack">
+          <h3 id="call-peer-name">Calling...</h3>
+          <span id="call-status-badge">Connecting Peer-to-Peer...</span>
+        </div>
+        <div class="call-peer-badges-row" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 2px;">
+          <span class="encryption-pill" id="call-e2ee-lock-pill" title="SDP Offer/Answer & ICE Candidates are AES-GCM 256-bit Encrypted + DTLS-SRTP Media">
+            <i data-lucide="shield-check" style="width: 11px; height: 11px;"></i>
+            <span id="call-e2ee-code-text">E2EE AES-256 + DTLS-SRTP</span>
+          </span>
+          <span id="call-duration-timer" class="call-timer-pill hidden">00:00</span>
+        </div>
+        <!-- Active Conference Participants Pills -->
+        <div id="call-participants-chips" class="call-participants-chips hidden"></div>
+      </div>
+
+      <div class="video-grid hidden" id="video-streams-container" title="Tap the small video to swap main & PiP views">
+        <video id="remote-video" autoplay playsinline disablePictureInPicture controlsList="nodownload nofullscreen noremoteplayback"></video>
+        <div id="extra-remote-videos-grid" class="extra-remote-videos-grid hidden"></div>
+        <video id="local-video" autoplay playsinline muted disablePictureInPicture controlsList="nodownload nofullscreen noremoteplayback"></video>
+        <!-- Single Floating Full Screen / Minimize Icon inside Video Frame (Top-Right in Fullscreen, Top-Left in Card) -->
+        <button type="button" id="btn-video-fullscreen-corner" class="video-fs-corner-btn" title="Toggle Full Screen Video View">
+          <i data-lucide="maximize-2" id="video-fs-corner-icon" style="width: 16px; height: 16px;"></i>
+        </button>
+      </div>
+
+      <audio id="remote-audio" autoplay></audio>
+      <div id="extra-remote-audios-container" class="hidden"></div>
+
+      <div class="call-action-bar">
+        <button id="btn-toggle-mic" class="call-tool-btn" title="Mute/Unmute Mic">
+          <i data-lucide="mic"></i>
+        </button>
+        <button id="btn-toggle-speaker" class="call-tool-btn" title="Toggle Speaker / Earpiece">
+          <i data-lucide="volume-1" id="speaker-btn-icon"></i>
+        </button>
+        <button id="btn-toggle-cam" class="call-tool-btn hidden" title="Toggle Camera">
+          <i data-lucide="video"></i>
+        </button>
+        <button id="btn-switch-cam" class="call-tool-btn hidden" title="Switch Front / Back Camera">
+          <i data-lucide="refresh-cw" id="switch-cam-icon"></i>
+        </button>
+        <button id="btn-call-add-member-bar" class="call-tool-btn" title="Add Another Member to Call">
+          <i data-lucide="user-plus"></i>
+        </button>
+        <button id="btn-end-call" class="call-tool-btn end-call" title="End Call">
+          <i data-lucide="phone-off"></i>
+        </button>
+      </div>
+
+      <!-- Add Another Member to Active Call Modal (Mounted INSIDE #call-screen-overlay so it works in Fullscreen too!) -->
+      <div id="call-add-member-modal" class="glass-modal hidden" style="z-index: 9999999;">
+        <div class="glass-card" style="max-width: 390px; max-height: 78dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="settings-pinned-header" style="padding: 14px 18px;">
+            <div class="brand-inline">
+              <div class="header-badge-icon">
+                <i data-lucide="user-plus" style="width: 17px; height: 17px;"></i>
+              </div>
+              <h3 style="font-size: 15.5px; font-weight: 800;">Add Friend to Encrypted Call</h3>
+            </div>
+            <button type="button" id="btn-close-call-add-modal" class="icon-close-btn sm" title="Close">
+              <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+
+          <div style="padding: 10px 16px 6px 16px; border-bottom: 1px solid var(--glass-border-subtle);">
+            <div class="krypton-search-pill-box" style="height: 37px;">
+              <i data-lucide="search" class="krypton-search-pill-icon"></i>
+              <input type="text" id="call-add-search-input" placeholder="Search connected friend..." autocomplete="off" style="background:transparent; border:none; color:var(--text-main); width:100%; outline:none; font-size:13px;" />
+            </div>
+          </div>
+
+          <div id="call-add-friends-list" class="settings-scroll-body" style="padding: 10px 14px; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Shell -->
+  <div class="app-layout">
+
+    <!-- Sidebar (v14000 Reference-Style Clean Layout + Dedicated Profile Dashboard) -->
+    <aside class="glass-panel sidebar krypton-clean-sidebar" id="app-sidebar">
+
+      <!-- 1. Top Clean Brand Bar ("Krypton" on Left, Instant Lock + Theme + 3-Dot Menu on Right) -->
+      <div class="krypton-top-brand-bar" id="sidebar-top-brand-bar">
+        <div class="krypton-brand-title-wrap">
+          <span class="krypton-brand-title">Krypton</span>
+          <span id="display-my-id" class="krypton-my-uid-sub">@user</span>
+        </div>
+
+        <div class="krypton-top-actions" style="position: relative;">
+          <button id="btn-panic-lock" class="tool-btn" title="Instant App Lock (Alt+X)">
+            <i data-lucide="lock" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button id="btn-quick-theme" class="tool-btn" title="Switch Accent Theme">
+            <i data-lucide="palette" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button id="btn-top-three-dots" class="tool-btn" title="More Options">
+            <i data-lucide="more-vertical" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <!-- Reference Image 2 Style Top-Right 3-Dot Dropdown Menu (Obsidian Dark Mode | Create Group | Saved Messages) -->
+          <div id="top-main-dropdown-menu" class="krypton-top-dropdown-menu hidden">
+            <button type="button" id="top-menu-toggle-dark" class="krypton-top-menu-item">
+              <i data-lucide="moon" id="top-menu-dark-icon" style="width: 17px; height: 17px;"></i>
+              <span id="top-menu-dark-label">Obsidian Dark Mode: ON</span>
+            </button>
+            <button type="button" id="btn-open-create-group" class="krypton-top-menu-item">
+              <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+              <span>New Group</span>
+            </button>
+            <button type="button" id="top-menu-saved-msgs" class="krypton-top-menu-item">
+              <i data-lucide="bookmark" style="width: 17px; height: 17px;"></i>
+              <span>Saved Messages (@me)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden Legacy Hooks -->
+      <div class="user-profile hidden" aria-hidden="true">
+        <div class="avatar-wrap" id="sidebar-avatar-wrap"></div>
+        <div class="meta" id="sidebar-meta-wrap"></div>
+        <button id="btn-settings" class="hidden"></button>
+      </div>
+      <div class="nav-channels hidden" id="global-lounge-wrapper" aria-hidden="true">
+        <button class="nav-item" id="btn-global-room">
+          <span id="global-lounge-online-badge">1 Active</span>
+          <span id="global-lounge-subtext">Public encrypted mesh stream</span>
+        </button>
+      </div>
+
+      <!-- VIEW A: MAIN CHATS VIEW (Search Bar + Requests + Filter Pills + Chat List) -->
+      <div id="sidebar-chats-view" class="sidebar-main-view">
+        <!-- 2. Reference-Style Full-Width Rounded Pill Search Bar ("Search Chats") -->
+        <div class="direct-section krypton-pill-search-section">
+          <div class="krypton-search-pill-box">
+            <i data-lucide="search" class="krypton-search-pill-icon"></i>
+            <input type="text" id="peer-id-input" placeholder="Search Chats or @username..." enterkeyhint="search" autocomplete="off" />
+            <button id="btn-connect-peer" class="krypton-search-action-btn" title="Search / Add Friend">
+              <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i>
+            </button>
+          </div>
+          <!-- Live Typing User Suggestions Overlay with DP -->
+          <div id="live-user-suggestions" class="live-user-suggestions hidden"></div>
+        </div>
+
+        <!-- Friend / Call / Group Requests Hub -->
+        <div id="pending-requests-section" class="requests-section hidden">
+          <div class="requests-header-row">
+            <div class="section-title" style="margin: 0; display: flex; align-items: center; gap: 5px;">
+              <i data-lucide="user-plus" style="width: 13px; height: 13px;"></i>
+              <span>REQUESTS (<span id="req-count">0</span>)</span>
+            </div>
+            <div class="req-tabs">
+              <button id="tab-req-incoming" class="req-tab-btn active">Incoming</button>
+              <button id="tab-req-sent" class="req-tab-btn">Sent</button>
+            </div>
+          </div>
+          <div class="request-list" id="requests-container"></div>
+        </div>
+
+        <!-- Compact Filter Pills (All | Direct | Groups) + Online Badge -->
+        <div class="sidebar-conv-header">
+          <div class="sidebar-cat-tabs" id="sidebar-cat-tabs">
+            <button class="sidebar-tab-btn active" data-side-tab="all">All</button>
+            <button class="sidebar-tab-btn" data-side-tab="direct">Direct</button>
+            <button class="sidebar-tab-btn" data-side-tab="groups">Groups</button>
+          </div>
+          <span id="online-mesh-count" class="online-pill-badge">0 Online</span>
+        </div>
+
+        <!-- 3. Clean Full-Height Edge-to-Edge Conversations List -->
+        <div class="recent-chats krypton-clean-chat-list" id="chat-list"></div>
+      </div>
+
+      <!-- VIEW B: DEDICATED TELEGRAM-STYLE PROFILE DASHBOARD (Reference Image 1 Style, With Bottom Nav Bar Visible!) -->
+      <div id="sidebar-profile-dashboard" class="krypton-profile-dashboard hidden">
+        <!-- Top Hero Avatar, Display Name & Online Status -->
+        <div class="tg-profile-hero">
+          <div class="tg-profile-avatar-ring" id="tg-profile-avatar-click" title="Tap to view full-size photo">
+            <div class="avatar lg" id="tg-profile-main-avatar">?</div>
+            <button type="button" id="tg-btn-camera-badge" class="avatar-edit-badge" title="Upload New Profile Photo">
+              <i data-lucide="camera" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <h2 id="tg-profile-display-name" class="tg-profile-name">User</h2>
+          <span id="tg-profile-online-status" class="tg-profile-status">online</span>
+        </div>
+
+        <!-- 3 Action Tiles Row (Set Photo | Edit Info | Settings) just like Reference Pic -->
+        <div class="tg-profile-action-tiles">
+          <button type="button" class="tg-action-tile" id="tg-tile-set-photo">
+            <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
+            <span>Set Photo</span>
+          </button>
+          <button type="button" class="tg-action-tile" id="tg-tile-edit-info">
+            <i data-lucide="pencil" style="width: 18px; height: 18px;"></i>
+            <span>Edit Info</span>
+          </button>
+          <button type="button" class="tg-action-tile" id="tg-tile-open-settings">
+            <i data-lucide="settings" style="width: 18px; height: 18px;"></i>
+            <span>Settings</span>
+          </button>
+        </div>
+
+        <!-- Info Details Card (Username + Bio + Session Identity + Remove Photo) -->
+        <div class="tg-profile-info-card">
+          <!-- Username Row (View & Inline Edit) -->
+          <div class="tg-info-row">
+            <div class="tg-info-main">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span class="tg-info-value" id="tg-info-username-val">@username</span>
+                <div style="display: inline-flex; gap: 4px;">
+                  <button type="button" id="tg-btn-copy-username" class="tool-btn username-inline-btn" title="Copy Username">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="tg-btn-edit-username" class="tool-btn username-inline-btn" title="Change Username">
+                    <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+              <span class="tg-info-label">Username</span>
+            </div>
+
+            <!-- Inline Username Editor (Shown when Pencil or Edit Info clicked) -->
+            <div id="tg-username-editor-box" class="tg-inline-editor hidden">
+              <input type="text" id="tg-username-input" placeholder="Enter new @username" autocomplete="off" />
+              <div class="tg-inline-editor-btns">
+                <button type="button" id="tg-btn-save-username" class="glass-btn-sm btn-save-action">Save</button>
+                <button type="button" id="tg-btn-cancel-username" class="glass-btn-sm">Cancel</button>
+              </div>
+            </div>
+            <span id="tg-username-error" class="status-msg error" style="display: none; margin-top: 2px;"></span>
+          </div>
+
+          <div class="tg-info-divider"></div>
+
+          <!-- Bio / About Row (View & Inline Edit) -->
+          <div class="tg-info-row" id="tg-bio-section-row">
+            <div class="tg-info-main">
+              <span class="tg-info-value" id="tg-info-bio-val">Hey there! I am using Krypton.</span>
+              <span class="tg-info-label">Bio (Tap to edit your description)</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 6px;">
+              <input type="text" id="tg-bio-input" class="settings-bio-input" placeholder="Write your bio..." maxlength="80" autocomplete="off" />
+              <button type="button" id="tg-btn-save-bio" class="glass-btn-sm btn-save-action" style="padding: 6px 14px;">Save Bio</button>
+            </div>
+          </div>
+
+          <div class="tg-info-divider"></div>
+
+          <!-- Avatar Photo Quick Actions & Personal Vault Shortcut -->
+          <div class="tg-info-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="tg-btn-remove-photo" class="glass-btn-sm danger" style="flex: 1; text-align: center;">
+              Remove Profile Photo
+            </button>
+            <button type="button" id="tg-btn-open-vault" class="glass-btn-sm" style="flex: 1; text-align: center;">
+              Saved Messages (@me)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating AI Guide Action Button (Stacked neatly above Bottom Nav Dock) -->
+      <button id="btn-krypton-ai-orb" class="krypton-ai-circle-fab" title="Krypton AI Guide (Hinglish & English)">
+        <span class="ai-circle-glow-ring"></span>
+        <span class="ai-circle-icon">✨</span>
+      </button>
+
+      <!-- 4. Reference-Style Floating Bottom Navigation Pill Dock (Chats on Left | Global | Setting | Profile) -->
+      <nav class="krypton-bottom-nav-dock" id="krypton-bottom-nav" aria-label="Primary Navigation">
+        <button type="button" class="krypton-dock-item active" id="dock-btn-chats" data-dock-tab="chats">
+          <div class="dock-icon-wrap">
+            <i data-lucide="message-circle" style="width: 19px; height: 19px;"></i>
+            <span id="dock-chats-unread-badge" class="dock-unread-pill hidden">0</span>
+          </div>
+          <span class="dock-label">Chats</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-global" data-dock-tab="global">
+          <div class="dock-icon-wrap">
+            <i data-lucide="globe" style="width: 19px; height: 19px;"></i>
+            <span id="dock-global-badge" class="dock-mini-dot"></span>
+          </div>
+          <span class="dock-label">Global</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-settings" data-dock-tab="settings">
+          <div class="dock-icon-wrap">
+            <i data-lucide="settings" style="width: 19px; height: 19px;"></i>
+          </div>
+          <span class="dock-label">Setting</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-profile" data-dock-tab="profile">
+          <div class="dock-icon-wrap dock-avatar-holder">
+            <div class="avatar sm" id="my-avatar" style="width: 24px; height: 24px; font-size: 11px; border-width: 1.5px;">?</div>
+            <div class="online-dot visible" id="my-online-dot" style="width: 8px; height: 8px; right: -1px; bottom: -1px;"></div>
+          </div>
+          <span class="dock-label">Profile</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Chat Screen -->
+    <main class="glass-panel chat-screen" id="app-chat-screen">
+      <header class="chat-header">
+        <div class="chat-target" id="header-chat-target-box" style="cursor: pointer;" title="View Profile / Group Info">
+          <button id="btn-mobile-back" class="nav-back-btn" title="Back to Dashboard">
+            <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i>
+          </button>
+          <div class="avatar sm" id="header-chat-avatar" title="Click to View Full Profile Picture">?</div>
+          <div class="header-indicator-wrap">
+            <div class="status-indicator" id="header-status-indicator"></div>
+          </div>
+          <div class="target-text-wrap">
+            <h3 id="current-room-title">Global Anonymous Lounge</h3>
+            <span id="current-room-subtitle" class="room-subtitle">AES-256 Encrypted Mesh</span>
+          </div>
+        </div>
+
+        <!-- Header Controls -->
+        <div class="chat-controls">
+          <button id="btn-group-add-member" class="tool-btn hidden" title="Add Member to Group (Owner Only)">
+            <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <button id="btn-toggle-chat-search" class="tool-btn" title="Search Messages (Ctrl+F)">
+            <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <div id="call-buttons-group" class="call-controls-group hidden">
+            <button id="btn-start-voice" class="tool-btn" title="Start Encrypted Voice Call">
+              <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
+            </button>
+            <button id="btn-start-video" class="tool-btn" title="Start Encrypted Video Call">
+              <i data-lucide="video" style="width: 18px; height: 18px;"></i>
+            </button>
+          </div>
+
+          <!-- Dynamic 3-Dot Dropdown -->
+          <div class="header-menu-wrap" style="position: relative;">
+            <button id="btn-header-menu" class="tool-btn" title="Chat Options">
+              <i data-lucide="more-vertical" style="width: 18px; height: 18px;"></i>
+            </button>
+            <div id="header-dropdown-menu" class="contact-dropdown-menu hidden"
+              style="position: absolute !important; top: 42px !important; right: 0 !important; left: auto !important; min-width: 210px !important; z-index: 999999 !important;">
+              <div class="menu-sub-header" id="menu-timer-title">Disappearing Timer</div>
+              <select id="ttl-select" class="dropdown-styled-select">
+                <option value="0">Off (Permanent)</option>
+                <option value="-1">Burn After Seen (10s)</option>
+                <option value="3600">1 Hour</option>
+                <option value="86400">24 Hours</option>
+                <option value="604800">7 Days</option>
+                <option value="2592000">1 Month</option>
+              </select>
+
+              <button id="btn-clear-chat" class="contact-dropdown-item danger" style="margin-top: 6px;">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                <span>Clear Both Sides</span>
+              </button>
+
+              <button id="btn-clear-global-for-me" class="contact-dropdown-item danger" style="margin-top: 6px;">
+                <i data-lucide="eye-off" style="width: 14px; height: 14px;"></i>
+                <span>Clear Feed For Me</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Feature #1: Message Category Filter Pills Bar -->
+      <div class="chat-category-bar" id="chat-category-bar">
+        <button class="cat-filter-pill active" data-filter="all">All</button>
+        <button class="cat-filter-pill" data-filter="media"><i data-lucide="image" class="pill-inline-svg"></i><span>Photos</span></button>
+        <button class="cat-filter-pill" id="cat-pill-voice" data-filter="voice"><i data-lucide="mic" class="pill-inline-svg"></i><span>Voice</span></button>
+        <button class="cat-filter-pill" data-filter="files"><i data-lucide="file-text" class="pill-inline-svg"></i><span>Files</span></button>
+        <button class="cat-filter-pill" data-filter="links"><i data-lucide="link-2" class="pill-inline-svg"></i><span>Links</span></button>
+      </div>
+
+      <!-- In-Chat Search Bar Drawer -->
+      <div id="in-chat-search-bar" class="in-chat-search-bar hidden">
+        <i data-lucide="search" style="width: 15px; height: 15px; color: var(--text-dim);"></i>
+        <input type="text" id="in-chat-search-input" placeholder="Filter messages in this room..." autocomplete="off" />
+        <span id="in-chat-search-count" class="search-match-pill"></span>
+        <button id="btn-close-chat-search" class="icon-close-btn sm" title="Close Search">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- Pinned Message Banner in Room -->
+      <div id="pinned-message-banner" class="pinned-msg-banner hidden">
+        <i data-lucide="pin" style="width: 14px; height: 14px; color: var(--accent-primary); flex-shrink: 0;"></i>
+        <div class="pinned-msg-content" id="pinned-msg-jump">
+          <span class="pinned-msg-label">PINNED MESSAGE</span>
+          <span id="pinned-msg-text" class="pinned-msg-snippet">Message...</span>
+        </div>
+        <button id="btn-unpin-msg" class="icon-close-btn sm" title="Unpin Message">
+          <i data-lucide="x" style="width: 13px; height: 13px;"></i>
+        </button>
+      </div>
+
+      <!-- Message Feed -->
+      <div class="message-feed" id="message-container"></div>
+
+      <!-- Floating Scroll-to-Bottom Button -->
+      <button id="btn-scroll-bottom" class="scroll-bottom-btn hidden" title="Scroll to latest">
+        <i data-lucide="chevron-down" style="width: 18px; height: 18px;"></i>
+      </button>
+
+      <!-- WhatsApp-Style Full Categorized & Searchable Emoji Palette (v9000 - 280+ Emojis) -->
+      <div id="emoji-palette" class="glass-palette whatsapp-emoji-drawer hidden">
+        <div class="emoji-drawer-top">
+          <div class="emoji-search-wrap">
+            <i data-lucide="search" style="width: 14px; height: 14px; color: var(--text-dim); flex-shrink: 0;"></i>
+            <input type="text" id="emoji-search-input" placeholder="Search emojis (e.g. laugh, heart, fire, party)..." autocomplete="off" />
+          </div>
+          <button type="button" id="btn-close-emoji-drawer" class="icon-close-btn sm" title="Close Emojis">
+            <i data-lucide="x" style="width: 13px; height: 13px;"></i>
+          </button>
+        </div>
+
+        <div class="emoji-cat-tabs" id="emoji-cat-tabs">
+          <button type="button" class="emoji-cat-btn active" data-ecat="all" title="All Emojis">All</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="recent" title="Recently Used">🕒</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="smileys" title="Smileys & Faces">😀</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="gestures" title="Hands & Gestures">👋</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="hearts" title="Hearts & Love">❤️</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="animals" title="Animals & Nature">🦁</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="food" title="Food & Drinks">🍕</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="activities" title="Celebration, Sports & Objects">🎉</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="symbols" title="Symbols, Flags & Cyber">🔥</button>
+        </div>
+
+        <div class="emoji-grid-scroll" id="emoji-grid-scroll">
+          <div class="emoji-grid" id="whatsapp-emoji-grid"></div>
+        </div>
+      </div>
+
+      <!-- Compact Corner Attachment & Tools Hub Popover Menu (With Feature #6 View Mode Selector) -->
+      <div id="attach-hub-menu" class="attach-hub-popover hidden">
+        <!-- Feature #6: View Mode Selector for Spoilers, Photos & Files -->
+        <div class="hub-viewmode-bar">
+          <span class="hub-viewmode-title">VIEW MODE (MEDIA / FILES / SPOILER)</span>
+          <div class="hub-viewmode-pills" id="hub-viewmode-pills">
+            <button type="button" class="viewmode-pill active" data-vmode="normal" title="Normal Permanent View">Standard</button>
+            <button type="button" class="viewmode-pill" data-vmode="once" title="View Once: Deletes immediately after receiver opens & closes">1x View</button>
+            <button type="button" class="viewmode-pill" data-vmode="10s" title="Auto-destroys 10 seconds after receiver reveals/opens">10s Burn</button>
+          </div>
+        </div>
+
+        <button id="hub-btn-emoji" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(245, 158, 11, 0.16); color: #fbbf24;">
+            <i data-lucide="smile" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Emoji Tray</span>
+        </button>
+        <button id="hub-btn-image" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(14, 165, 233, 0.16); color: #38bdf8;">
+            <i data-lucide="image" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Encrypted Photo</span>
+        </button>
+        <button id="hub-btn-file" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(168, 85, 247, 0.16); color: #c084fc;">
+            <i data-lucide="paperclip" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Document / File</span>
+        </button>
+        <button id="hub-btn-spoiler" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(244, 63, 94, 0.16); color: #fb7185;">
+            <i data-lucide="eye-off" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span id="hub-spoiler-label">Spoiler Blur: OFF</span>
+        </button>
+      </div>
+
+      <!-- Hidden File Inputs -->
+      <input type="file" id="image-file-input" accept="image/*" style="display: none;" />
+      <input type="file" id="doc-file-input" accept=".pdf,.zip,.txt,.json,.md,.csv,.py,.js,.html,.css,.doc,.docx" style="display: none;" />
+
+      <!-- Dynamic Smart Friend Request Banner -->
+      <div id="chat-lock-banner" class="lock-banner hidden">
+        <div class="lock-banner-info">
+          <i data-lucide="shield-alert" id="lock-banner-icon" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+          <span id="lock-banner-text">Friend request required to unlock end-to-end encrypted chat.</span>
+        </div>
+        <div id="lock-banner-actions" class="lock-banner-actions">
+          <button id="btn-banner-send-req" class="glass-btn-sm btn-save-action">Send Friend Request</button>
+        </div>
+      </div>
+
+      <!-- Active Reply Preview Bar -->
+      <div id="reply-preview-bar" class="reply-preview-bar hidden">
+        <div class="reply-preview-accent"></div>
+        <div class="reply-preview-text">
+          <span id="reply-preview-sender" class="reply-preview-user">@user</span>
+          <span id="reply-preview-snippet" class="reply-preview-msg">Message snippet...</span>
+        </div>
+        <button id="btn-cancel-reply" class="icon-close-btn sm" title="Cancel Reply">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- Ultra-Spacious Input Bar (Single Corner Hub + Full Width Input + Hold-to-Record Mic + Send) -->
+      <footer class="input-bar" id="chat-input-bar">
+        <button id="btn-attach-hub" class="attach-plus-btn" title="Tools, View Mode (1-Time / 10s), Media, Files & Spoiler">
+          <i data-lucide="plus" style="width: 20px; height: 20px;"></i>
+        </button>
+
+        <span id="active-vmode-badge" class="active-vmode-indicator hidden" title="Click to reset to Standard View">1x View</span>
+
+        <!-- Live Recording Overlay Banner inside Input Bar when holding Mic -->
+        <div id="voice-recording-banner" class="voice-recording-live-pill hidden">
+          <div class="recording-pulse-dot"></div>
+          <span id="recording-timer-badge">0:00</span>
+          <span class="recording-release-hint">Release to deliver voice note...</span>
+        </div>
+
+        <input type="text" id="chat-input" placeholder="Message..." autocomplete="off" />
+
+        <button id="btn-record-audio" class="mic-hold-btn" title="Hold to Record Voice, Release to Send">
+          <i data-lucide="mic" style="width: 19px; height: 19px; pointer-events: none;"></i>
+        </button>
+
+        <button id="btn-send" class="send-btn" title="Transmit (Enter)">
+          <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+        </button>
+      </footer>
+    </main>
+
+  </div>
+
+  <script src="app.js?v=21000"></script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("./sw.js")
+          .then((reg) => reg.update())
+          .catch((err) => console.error("PWA Service Worker failed:", err));
+      });
+    }
+  </script>
+</body>
+
+</html>
