@@ -1,0 +1,92 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup Java JDK 21 for Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Inject Secure Supabase Secrets & Sync Capacitor
+        env:
+          SECRET_URL: ${{ secrets.SUPABASE_URL }}
+          SECRET_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          npm install -g @capacitor/cli @capacitor/assets
+          npm install --legacy-peer-deps
+          if [ -n "$SECRET_URL" ] && [ -n "$SECRET_KEY" ]; then
+            sed -i "s|const RAW_URL = \"your url\";|const RAW_URL = \"$SECRET_URL\";|g" www/app.js
+            sed -i "s|const RAW_KEY = \"your key\";|const RAW_KEY = \"$SECRET_KEY\";|g" www/app.js
+          fi
+          mkdir -p assets
+          if [ -f "www/icon-512.png" ] && [ ! -f "assets/icon.png" ]; then
+            cp www/icon-512.png assets/icon.png
+          fi
+          if [ -f "assets/icon.png" ]; then
+            cp -f assets/icon.png www/icon-192.png
+            cp -f assets/icon.png www/icon-512.png
+            npx @capacitor/assets generate --android --iconBackgroundColor '#06080f' --iconBackgroundColorDark '#06080f' --splashBackgroundColor '#06080f' --splashBackgroundColorDark '#06080f'
+          fi
+          npx cap sync android
+
+      - name: Prepare Consistent APK Signing Key & VersionCode
+        run: |
+          mkdir -p ~/.android
+          rm -f ~/.android/debug.keystore
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          cp -f ~/.android/debug.keystore android/app/debug.keystore || true
+          VER_CODE=$((100 + ${GITHUB_RUN_NUMBER:-1}))
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i "s/versionCode [0-9]*/versionCode $VER_CODE/g" android/app/build.gradle
+            sed -i "s/versionName \"[^\"]*\"/versionName \"2.5.$VER_CODE\"/g" android/app/build.gradle
+          fi
+
+      - name: Build Android Debug APK & Rename to krypton.apk
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/krypton.apk
+
+      - name: Upload krypton.apk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krypton-apk
+          path: android/app/build/outputs/apk/debug/krypton.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish krypton.apk to GitHub Releases Automatically
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Krypton Latest APK"
+          files: android/app/build/outputs/apk/debug/krypton.apk
+          prerelease: false
