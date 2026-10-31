@@ -368,15 +368,14 @@ public class MainActivity extends BridgeActivity {
 
                     Toast.makeText(MainActivity.this, "Downloading Krypton Update...", Toast.LENGTH_SHORT).show();
 
-                    File updateFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "Krypton-Update.apk");
-                    if (updateFile.exists()) updateFile.delete();
+                   File updateFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "krypton.apk");
+if (updateFile.exists()) updateFile.delete();
 
-                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
-                    request.setTitle("Krypton App Update");
-                    request.setDescription("Downloading latest Krypton APK...");
-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalFilesDir(MainActivity.this, Environment.DIRECTORY_DOWNLOADS, "Krypton-Update.apk");
-
+DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
+request.setTitle("krypton.apk");
+request.setDescription("Downloading latest krypton.apk...");
+request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+request.setDestinationInExternalFilesDir(MainActivity.this, Environment.DIRECTORY_DOWNLOADS, "krypton.apk");
                     DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
                     downloadId = manager.enqueue(request);
 

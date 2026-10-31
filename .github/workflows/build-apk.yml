@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -67,16 +67,26 @@ jobs:
             sed -i "s/versionName \"[^\"]*\"/versionName \"2.5.$VER_CODE\"/g" android/app/build.gradle
           fi
 
-      - name: Build Android Debug APK
+      - name: Build Android Debug APK & Rename to krypton.apk
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/krypton.apk
 
-      - name: Upload APK Artifact
+      - name: Upload krypton.apk Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Android-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: krypton-apk
+          path: android/app/build/outputs/apk/debug/krypton.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish krypton.apk to GitHub Releases Automatically
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Krypton Latest APK"
+          files: android/app/build/outputs/apk/debug/krypton.apk
+          prerelease: false
