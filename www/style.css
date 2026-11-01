@@ -7448,3 +7448,98 @@ body:not(.dark-theme) .message-feed {
   -webkit-transform: none !important;
   transition: none !important;
 }
+
+/* =========================================================
+   v40000: TELEGRAM-STYLE CLEAN & SIMPLE CALL MESSAGE BUBBLES
+   ========================================================= */
+
+/* Make outer message bubble clean and compact when it holds a Telegram Call Card */
+.msg-bubble:has(.tg-call-card) .bubble-content {
+  padding: 10px 14px !important;
+  border-radius: 18px !important;
+  min-width: 205px !important;
+}
+
+.call-system-log-card.tg-call-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 2px 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-width: 185px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+.tg-call-left {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  text-align: left !important;
+}
+
+.tg-call-title {
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+  color: inherit !important;
+  letter-spacing: -0.1px !important;
+}
+
+.tg-call-sub {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  opacity: 0.88 !important;
+  color: inherit !important;
+}
+
+.tg-call-arrow {
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+}
+
+.tg-call-arrow.arrow-ok {
+  color: #34d399 !important;
+}
+
+.msg-bubble.sent .tg-call-arrow.arrow-ok {
+  color: #ffffff !important;
+}
+
+.tg-call-arrow.arrow-missed {
+  color: #fb7185 !important;
+}
+
+.msg-bubble.sent .tg-call-arrow.arrow-missed {
+  color: #ffe4e6 !important;
+}
+
+.tg-call-right-icon {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  color: inherit !important;
+}
+
+.msg-bubble.received .tg-call-right-icon {
+  background: var(--accent-soft) !important;
+  color: var(--accent-primary) !important;
+}
+
+.msg-bubble.received .tg-call-card.is-missed-call .tg-call-right-icon {
+  background: rgba(244, 63, 94, 0.15) !important;
+  color: var(--danger-color) !important;
+}

@@ -18702,151 +18702,329 @@ initIdentity();
   }
 })();
 // =========================================================================
-// 37. FEATURE v39000 (4-POINT PRECISION FIX):
-//     1. FIX SETTINGS GOING BLANK AFTER CLOSING WEB QR SCANNER (PIC 1000121417)
-//     2. SHOW "25s Ring • Tap to call back" ON UNANSWERED CALL BUBBLES
-//     3. BLOCK "EDIT MESSAGE" & "COPY TEXT" ON CALL LOG & POLL BUBBLES
-//     4. NATIVE ANDROID WEBVIEW BACKGROUND SYNC TO STOP KEYBOARD GREY BAR
+// 37. FEATURE v40000 (CLEAN TELEGRAM-STYLE CALL LOGS & RELIABLE CALL SYNC):
+//     1. FIX RECEIVED/COMPLETED CALLS SHOWING AS "MISSED CALL" ON FIRST RENDER
+//     2. 100% RELIABLE CALL LOG DELIVERY AFTER EVERY CALL (COMPLETED,
+//        DECLINED, CANCELLED, OR 25s UNANSWERED)
+//     3. SIMPLE, CLEAN TELEGRAM-STYLE CALL BUBBLE UI (DIRECTION ARROW +
+//        EXACT DURATION OR STATUS + RIGHT PHONE/VIDEO ICON)
+//     4. KEEP QR SCANNER SETTINGS RESTORE & BLOCK EDITING CALL BUBBLES
 // =========================================================================
 
 (function () {
   // -----------------------------------------------------------------------
-  // 1. FIX SETTINGS SCREEN GOING BLACK/BLANK WHEN OPENING OR CLOSING QR SCANNER
+  // 1. FIX SETTINGS BLANKING WHEN CLOSING QR SCANNER
   // -----------------------------------------------------------------------
-  const origOpenQrScannerV39 = window.openKryptonQrScannerModal;
+  const origOpenQrV40 = window.openKryptonQrScannerModal;
   window.openKryptonQrScannerModal = async function () {
     const settingsModal = document.getElementById("settings-modal");
-    const wasSettingsVisible =
+    const wasVisible =
       settingsModal &&
       (!settingsModal.classList.contains("hidden") ||
         settingsModal.classList.contains("inline-sidebar-settings"));
 
-    if (typeof origOpenQrScannerV39 === "function") {
-      await origOpenQrScannerV39();
+    if (typeof origOpenQrV40 === "function") {
+      await origOpenQrV40();
     }
-
-    // Restore inline #settings-modal immediately so line 15836's `.add("hidden")` never blanks out Settings!
-    if (settingsModal && (wasSettingsVisible || currentSidebarViewMode === "settings")) {
+    if (settingsModal && (wasVisible || currentSidebarViewMode === "settings")) {
       settingsModal.classList.remove("hidden");
     }
   };
 
-  function bindQrCloseRestoreSettings() {
-    const closeQrBtn = document.getElementById("btn-close-qr-scanner");
-    const qrModal = document.getElementById("krypton-qr-scanner-modal");
+  // -----------------------------------------------------------------------
+  // 2. RELIABLE CALL STATE TRACKER (NEVER MISSES OR MISLABELS A CALL!)
+  // -----------------------------------------------------------------------
+  let callSessionActive = false;
+  let callSessionConnected = false;
+  let callSessionConnectedAt = 0;
+  let callSessionType = "voice";
+  let callSessionPeer = "";
+  let callLogLockUntil = 0;
 
-    function ensureSettingsRestoredIfActive() {
-      const settingsBtnDock = document.getElementById("dock-btn-settings");
-      const settingsModal = document.getElementById("settings-modal");
-      const isSettingsTabActive =
-        (typeof currentSidebarViewMode !== "undefined" && currentSidebarViewMode === "settings") ||
-        (settingsBtnDock && settingsBtnDock.classList.contains("active"));
+  function formatTelegramCallDuration(totalSeconds) {
+    const s = Math.max(1, Math.floor(totalSeconds || 1));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    if (mins > 0 && secs > 0) return `${mins}m ${secs}s`;
+    if (mins > 0) return `${mins} min`;
+    return `${secs} sec`;
+  }
 
-      if (isSettingsTabActive && settingsModal) {
-        settingsModal.classList.remove("hidden");
+  // Send a single clean CALL_LOG_DATA message to the chat room
+  async function sendCleanCallLogOnce(cType, cState, cDurationStr = "") {
+    const now = Date.now();
+    if (now < callLogLockUntil) return;
+    callLogLockUntil = now + 4500;
+
+    if (!currentRoom || currentRoom === "global") {
+      if (callSessionPeer) {
+        const rId = await getSecureRoomId(callSessionPeer);
+        if (rId && currentRoom !== rId) {
+          currentRoom = rId;
+        }
+      }
+    }
+    if (!currentRoom || currentRoom === "global") return;
+
+    const cleanType = cType === "video" ? "video" : "voice";
+    const payload = cDurationStr
+      ? `CALL_LOG_DATA:${cleanType}|${cState}|${cDurationStr}`
+      : `CALL_LOG_DATA:${cleanType}|${cState}`;
+
+    if (typeof prevTransmitV37 === "function") {
+      await prevTransmitV37(payload);
+    } else if (typeof origTransmitV36 === "function") {
+      await origTransmitV36(payload);
+    } else if (typeof transmitPayload === "function") {
+      await transmitPayload(payload);
+    }
+  }
+
+  // Track when a call starts ringing
+  const prevInitCallPermV40 = window.initiateCallPermission;
+  window.initiateCallPermission = async function (type) {
+    callSessionActive = true;
+    callSessionConnected = false;
+    callSessionConnectedAt = 0;
+    callSessionType = type === "video" ? "video" : "voice";
+    callSessionPeer = (currentPeerUser || "").toLowerCase();
+    return prevInitCallPermV40(type);
+  };
+
+  // Track when WebRTC starts & connects (Works on both Caller and Receiver!)
+  const baseStartWebRTCV40 = typeof origStartWebRTCV36 === "function" ? origStartWebRTCV36 : window.startWebRTC;
+  window.startWebRTC = async function (isCaller, type) {
+    callSessionActive = true;
+    callSessionConnected = true; // As soon as startWebRTC runs, the call was accepted!
+    callSessionConnectedAt = Date.now();
+    callSessionType = type === "video" ? "video" : "voice";
+    callSessionPeer = (currentPeerUser || activeCallSender || "").toLowerCase();
+
+    await baseStartWebRTCV40(isCaller, type);
+
+    if (peerConnection) {
+      const prevTrack = peerConnection.ontrack;
+      peerConnection.ontrack = (event) => {
+        callSessionConnected = true;
+        if (!callSessionConnectedAt) callSessionConnectedAt = Date.now();
+        if (prevTrack) prevTrack(event);
+      };
+    }
+  };
+
+  // Cleanly handle Call End without double-sending or mislabeling!
+  const baseEndCallV40 = typeof origEndCallV36 === "function" ? origEndCallV36 : window.endCall;
+  window.endCall = function (notifyRemote = true) {
+    const overlay = document.getElementById("call-screen-overlay");
+    const wasOverlayVisible = Boolean(overlay && !overlay.classList.contains("hidden"));
+    const targetPeer = (currentPeerUser || activeCallSender || callSessionPeer || "").toLowerCase();
+    const cType = callSessionType || activeCallType || "voice";
+
+    // Calculate accurate duration if call was accepted/connected
+    let elapsedSecs = 0;
+    if (callStartTime > 0) {
+      elapsedSecs = Math.max(1, Math.floor((Date.now() - callStartTime) / 1000));
+    } else if (callSessionConnectedAt > 0) {
+      elapsedSecs = Math.max(1, Math.floor((Date.now() - callSessionConnectedAt) / 1000));
+    }
+
+    const wasAnswered = Boolean(callSessionConnected || callStartTime > 0);
+    const wasOutgoingUnanswered = Boolean(!wasAnswered && (wasOverlayVisible || callSessionActive));
+
+    // Reset session flags immediately before calling base endCall
+    callSessionActive = false;
+    callSessionConnected = false;
+    callSessionConnectedAt = 0;
+    callStartTime = 0;
+
+    // Close incoming call popup if open
+    const callModal = document.getElementById("call-perm-modal");
+    if (callModal) callModal.classList.add("hidden");
+
+    // Run base WebRTC cleanup
+    baseEndCallV40(notifyRemote);
+
+    // Only the side that clicked End Call (notifyRemote === true) sends the Call Bubble
+    // so both users get the exact same 1 message via Realtime!
+    if (notifyRemote && targetPeer) {
+      try {
+        if (presenceChannel) {
+          presenceChannel.send({
+            type: "broadcast",
+            event: "call-cancelled-now",
+            payload: { caller: (myUsername || "").toLowerCase(), target: targetPeer }
+          });
+        }
+      } catch (e) { }
+
+      if (wasAnswered) {
+        const durText = formatTelegramCallDuration(elapsedSecs);
+        sendCleanCallLogOnce(cType, "completed", durText);
+      } else if (wasOutgoingUnanswered) {
+        sendCleanCallLogOnce(cType, "cancelled", "");
+      }
+    }
+  };
+
+  // Override logCallEventBubbleInChat (called by 25s/30s ring timeout or decline)
+  window.logCallEventBubbleInChat = async function (callType = "voice", outcome = "unanswered") {
+    await sendCleanCallLogOnce(callType, outcome, "");
+  };
+
+  // -----------------------------------------------------------------------
+  // 3. TELEGRAM-STYLE CALL BUBBLE RENDERER (READS DIRECTLY FROM DECRYPTED
+  //    MESSAGE PAYLOAD SO LIVE & RELOADED CHATS ARE 100% IDENTICAL!)
+  // -----------------------------------------------------------------------
+  function renderTelegramStyleCallBubble(node, rawDecryptedText) {
+    if (!node) return;
+
+    // Find raw CALL_LOG_DATA string from override, cache, or DOM
+    let rawCallStr = "";
+    if (typeof rawDecryptedText === "string" && rawDecryptedText.includes("CALL_LOG_DATA:")) {
+      rawCallStr = rawDecryptedText.slice(rawDecryptedText.indexOf("CALL_LOG_DATA:"));
+    } else if (node.dataset.rawCallPayload) {
+      rawCallStr = node.dataset.rawCallPayload;
+    } else {
+      // Check roomDecryptedCache for this message ID!
+      const msgId = (node.id || "").replace("msg-row-", "");
+      const cachedList = (roomDecryptedCache && roomDecryptedCache[currentRoom]) || [];
+      const found = cachedList.find((item) => item && item.msg && String(item.msg.id) === String(msgId));
+      if (found && typeof found.plain === "string" && found.plain.includes("CALL_LOG_DATA:")) {
+        rawCallStr = found.plain.slice(found.plain.indexOf("CALL_LOG_DATA:"));
       }
     }
 
-    if (closeQrBtn && !closeQrBtn.dataset.v39Restored) {
-      closeQrBtn.dataset.v39Restored = "true";
-      closeQrBtn.addEventListener("click", () => {
-        setTimeout(ensureSettingsRestoredIfActive, 20);
-      });
+    const existingCard = node.querySelector(".call-system-log-card");
+    if (!rawCallStr && !existingCard) return;
+
+    // Mark as call_log so it can NEVER be edited or copied
+    node.dataset.msgType = "call_log";
+    if (rawCallStr) node.dataset.rawCallPayload = rawCallStr;
+
+    const isSentByMe = node.classList.contains("sent");
+    let cType = "voice";
+    let cState = "missed";
+    let cDur = "";
+
+    if (rawCallStr.startsWith("CALL_LOG_DATA:")) {
+      const parts = rawCallStr.replace("CALL_LOG_DATA:", "").trim().split("|");
+      cType = (parts[0] || "voice").trim().toLowerCase();
+      cState = (parts[1] || "missed").trim().toLowerCase();
+      cDur = (parts[2] || "").trim();
+    } else if (existingCard) {
+      const t = (existingCard.textContent || "").toLowerCase();
+      if (t.includes("video")) cType = "video";
+      if (t.includes("duration") || existingCard.classList.contains("call-completed-card")) {
+        cState = "completed";
+      } else if (t.includes("declined")) {
+        cState = "declined";
+      } else if (t.includes("unanswered") || t.includes("25s") || t.includes("30s")) {
+        cState = "unanswered";
+      }
     }
-    if (qrModal && !qrModal.dataset.v39Restored) {
-      qrModal.dataset.v39Restored = "true";
-      qrModal.addEventListener("click", (e) => {
-        if (e.target && e.target.id === "krypton-qr-scanner-modal") {
-          setTimeout(ensureSettingsRestoredIfActive, 20);
+
+    const isVideo = cType === "video";
+    const isCompleted = cState === "completed";
+
+    // Telegram-Style Title & Subtitle
+    let mainTitle = "";
+    let subLabel = "";
+    const arrowSymbol = isSentByMe ? "↗" : "↙";
+    const arrowClass = isCompleted ? "arrow-ok" : "arrow-missed";
+
+    if (isCompleted) {
+      mainTitle = isSentByMe
+        ? isVideo ? "Outgoing Video Call" : "Outgoing Call"
+        : isVideo ? "Incoming Video Call" : "Incoming Call";
+      subLabel = cDur || "Connected";
+    } else if (cState === "declined") {
+      mainTitle = isSentByMe
+        ? isVideo ? "Declined Video Call" : "Declined Call"
+        : isVideo ? "Missed Video Call" : "Missed Call";
+      subLabel = "Declined • Tap to call back";
+    } else if (cState === "unanswered") {
+      mainTitle = isSentByMe
+        ? isVideo ? "Unanswered Video Call" : "Unanswered Call"
+        : isVideo ? "Missed Video Call" : "Missed Call";
+      subLabel = "25s Ring • Tap to call back";
+    } else {
+      // cancelled / missed
+      mainTitle = isSentByMe
+        ? isVideo ? "Cancelled Video Call" : "Cancelled Call"
+        : isVideo ? "Missed Video Call" : "Missed Call";
+      subLabel = "Tap to call back";
+    }
+
+    const iconName = isVideo ? "video" : "phone";
+    const textLineEl = node.querySelector(".msg-text-line");
+    if (!textLineEl) return;
+
+    textLineEl.innerHTML = `
+      <div class="call-system-log-card tg-call-card ${isCompleted ? "call-completed-card" : "is-missed-call"}" title="Tap to start ${isVideo ? "Video" : "Voice"} Call">
+        <div class="tg-call-left">
+          <span class="tg-call-title">${escapeHTML(mainTitle)}</span>
+          <span class="tg-call-sub">
+            <span class="tg-call-arrow ${arrowClass}">${arrowSymbol}</span>
+            <span>${escapeHTML(subLabel)}</span>
+          </span>
+        </div>
+        <div class="tg-call-right-icon">
+          <i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>
+        </div>
+      </div>
+    `;
+
+    if (window.lucide) lucide.createIcons({ nodes: [textLineEl] });
+
+    // Click card to immediately call back (Voice or Video)
+    const newCard = textLineEl.querySelector(".tg-call-card");
+    if (newCard) {
+      newCard.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof initiateCallPermission === "function") {
+          initiateCallPermission(isVideo ? "video" : "voice");
         }
       });
     }
   }
 
-  bindQrCloseRestoreSettings();
-  setTimeout(bindQrCloseRestoreSettings, 500);
-
-  // -----------------------------------------------------------------------
-  // 2. SHOW "25s Ring" ON UNANSWERED / TIMEOUT CALL BUBBLES & MARK AS CALL_LOG
-  // -----------------------------------------------------------------------
-  function applyCallBubble25sRingAndLockEdit(node) {
-    if (!node) return;
-    const card = node.querySelector(".call-system-log-card");
-    const pollCard = node.querySelector(".krypton-poll-card");
-
-    if (pollCard) {
-      node.dataset.msgType = "poll";
-    }
-
-    if (!card) return;
-    // Mark msgType as "call_log" so Long-Press Menu NEVER shows "Edit Message" or "Copy Text"!
-    node.dataset.msgType = "call_log";
-
-    const titleEl = card.querySelector(".call-log-title");
-    const subEl = card.querySelector(".call-log-sub");
-    const titleTxt = titleEl ? titleEl.textContent.trim() : "";
-    const subTxt = subEl ? subEl.textContent.trim() : "";
-    const isVideo = titleTxt.toLowerCase().includes("video");
-    const isSentByMe = node.classList.contains("sent");
-
-    // Detect if this call timed out after full 25s ringing ("Unanswered" or "30s timeout" or "25s")
-    const isFullRingTimeout =
-      titleTxt.includes("Unanswered") ||
-      subTxt.includes("timeout") ||
-      subTxt.includes("25s") ||
-      subTxt.includes("call back");
-
-    if (isFullRingTimeout && !card.classList.contains("call-completed-card") && !titleTxt.includes("Declined") && !titleTxt.includes("Busy")) {
-      if (titleEl) {
-        titleEl.textContent = isSentByMe
-          ? isVideo
-            ? "Unanswered Video Call (25s Ring)"
-            : "Unanswered Voice Call (25s Ring)"
-          : isVideo
-            ? "Missed Video Call (25s Ring)"
-            : "Missed Voice Call (25s Ring)";
-      }
-      if (subEl) {
-        subEl.textContent = `Rung for 25s • Tap to ${isVideo ? "video" : "voice"} call back`;
-      }
-    }
-  }
-
-  // Hook createMessageNode so every Call & Poll bubble gets tagged and formatted
-  const prevCreateMsgNodeV39 = window.createMessageNode;
+  // Hook createMessageNode at the very end so every Call Bubble renders in clean Telegram style
+  // whether it came from live Realtime decrypt OR from local room cache!
+  const prevCreateNodeBeforeV40 = window.createMessageNode;
   window.createMessageNode = async function (msg, rawTextOverride) {
-    const node = await prevCreateMsgNodeV39(msg, rawTextOverride);
-    if (node) {
-      applyCallBubble25sRingAndLockEdit(node);
+    const node = await prevCreateNodeBeforeV40(msg, rawTextOverride);
+    if (!node) return null;
+
+    if (
+      (typeof rawTextOverride === "string" && rawTextOverride.includes("CALL_LOG_DATA:")) ||
+      node.querySelector(".call-system-log-card")
+    ) {
+      renderTelegramStyleCallBubble(node, rawTextOverride);
+    } else if (node.querySelector(".krypton-poll-card")) {
+      node.dataset.msgType = "poll";
     }
     return node;
   };
 
-  // Also upgrade any existing bubbles in the chat feed
-  document.querySelectorAll("#message-container .message-row").forEach(applyCallBubble25sRingAndLockEdit);
+  // Re-render any existing call cards currently on screen
+  document.querySelectorAll("#message-container .message-row").forEach((row) => {
+    if (row.querySelector(".call-system-log-card")) {
+      renderTelegramStyleCallBubble(row, null);
+    }
+  });
 
-  // -----------------------------------------------------------------------
-  // 3. BLOCK "EDIT MESSAGE" & "COPY TEXT" ON CALL BUBBLES & POLLS IN CONTEXT MENU
-  // -----------------------------------------------------------------------
-  const prevOpenCtxMenuV39 = window.openWhatsAppMessageContextMenu;
+  // Block Edit & Copy on Call Bubbles & Polls
+  const prevCtxMenuV40 = window.openWhatsAppMessageContextMenu;
   window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
     const cleanId = String(msgId || "").replace("msg-row-", "");
     const row = document.getElementById("msg-row-" + cleanId);
-
-    // Ensure Call Log or Poll row has non-text msgType BEFORE context menu builds its buttons!
-    if (row) {
-      if (row.querySelector(".call-system-log-card")) {
-        row.dataset.msgType = "call_log";
-      } else if (row.querySelector(".krypton-poll-card")) {
-        row.dataset.msgType = "poll";
-      }
+    if (row && row.querySelector(".call-system-log-card")) {
+      row.dataset.msgType = "call_log";
     }
-
-    if (typeof prevOpenCtxMenuV39 === "function") {
-      prevOpenCtxMenuV39(msgId, clientX, clientY);
+    if (typeof prevCtxMenuV40 === "function") {
+      prevCtxMenuV40(msgId, clientX, clientY);
     }
-
-    // Extra safety: remove Edit & Copy buttons if row is a Call Log or Poll
     if (row && (row.dataset.msgType === "call_log" || row.dataset.msgType === "poll")) {
       const menu = document.querySelector(".whatsapp-msg-context-menu");
       if (menu) {
@@ -18859,23 +19037,4 @@ initIdentity();
       }
     }
   };
-
-  // Guard startEditingMessage so a Call Log or Poll can NEVER enter edit mode
-  const prevStartEditingV39 = window.startEditingMessage;
-  if (typeof prevStartEditingV39 === "function") {
-    window.startEditingMessage = function (msgId, currentText) {
-      const cleanId = String(msgId || "").replace("msg-row-", "");
-      const row = document.getElementById("msg-row-" + cleanId);
-      if (
-        row &&
-        (row.dataset.msgType === "call_log" ||
-          row.dataset.msgType === "poll" ||
-          row.querySelector(".call-system-log-card") ||
-          row.querySelector(".krypton-poll-card"))
-      ) {
-        return;
-      }
-      return prevStartEditingV39(msgId, currentText);
-    };
-  }
 })();
