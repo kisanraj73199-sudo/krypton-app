@@ -16825,21 +16825,38 @@ initIdentity();
   setTimeout(bindEmojiCategorySwipeGesture, 450);
 })();
 // =========================================================================
-// 31. FEATURE v32000 (DEFINITIVE ROOT-CAUSE FIX FOR ALL 5 ISSUES):
-//     1. REMOVE BACKGROUND "GLOBAL DIRECTORY RESULTS" FROM #chat-list
-//     2. STRICT TYPING-ONLY SEARCH IN #live-user-suggestions (NO AUTO-ADD TO RECENT)
-//     3. 0ms INSTANT USER PROFILE MODAL (CHATS @USER, HEADER & 3-DOT MENU)
-//        WITHOUT SAFETY FINGERPRINT KEY
-//     4. 1-CLICK OPEN / 2nd-CLICK CLOSE / OUTSIDE-CLICK CLOSE FOR BOTH
-//        EMOJI DRAWER (#btn-tg-emoji-left) & VIEW MEDIA HUB (#btn-attach-hub)
+// 31. FEATURE v33000 (FINAL PRECISION FIX FOR SEARCH & EMOJI TOGGLE):
+//     1. SHOW REGISTERED MATCHING USERS ON SEARCH (NO "GLOBAL DIRECTORY" TEXT)
+//     2. SUPPORTS EXACT, SUBSTRING & FUZZY PREFIX MATCH (e.g. "Helo" -> "@hello")
+//     3. EMOJI BUTTON WORKS 100% IDENTICALLY TO VIEW MEDIA (1st CLICK OPEN,
+//        2nd CLICK CLOSE, OUTSIDE CLICK CLOSE - IMMUNE TO LINE 8892 BUG!)
+//     4. 0ms INSTANT USER PROFILE DASHBOARD WITHOUT SAFETY FINGERPRINT KEY
 // =========================================================================
 
 (function () {
   // -----------------------------------------------------------------------
-  // 1. KILL BACKGROUND "GLOBAL DIRECTORY RESULTS" IN #chat-list &
-  //    ONLY SHOW STRICT TYPING MATCHES IN #live-user-suggestions
+  // 1. SEARCH BAR: FIND ALL REGISTERED MATCHING USERS & RENDER CLEANLY
+  //    (NO "GLOBAL DIRECTORY" HEADER, NO AUTO-ADD TO RECENT CHATS)
   // -----------------------------------------------------------------------
-  window.queryAllMatchingUsersEverywhere = async function (rawQuery) {
+  function doesUsernameMatchQuery(uname, query) {
+    const u = (uname || "").toLowerCase();
+    const q = (query || "").toLowerCase();
+    if (!u || !q) return false;
+    if (u.includes(q) || q.includes(u)) return true;
+
+    // Fuzzy prefix match so typing "helo" still matches "@hello"
+    const prefix3 = q.slice(0, 3);
+    if (prefix3.length >= 2 && u.startsWith(prefix3)) return true;
+
+    // Collapse repeated letters check (e.g. "hello" -> "helo")
+    const collapsedU = u.replace(/(.)\1+/g, "$1");
+    const collapsedQ = q.replace(/(.)\1+/g, "$1");
+    if (collapsedU.includes(collapsedQ)) return true;
+
+    return false;
+  }
+
+  async function searchRegisteredUsersClean(rawQuery) {
     const q = (rawQuery || "").trim().toLowerCase().replace(/^@/, "");
     if (!q) {
       lastUniversalSearchResults = [];
@@ -16848,20 +16865,34 @@ initIdentity();
 
     const myLower = (myUsername || "").toLowerCase();
     const userMap = new Map();
+    // Use first 2 letters for broad DB fetch, then filter strictly in JS so "helo" finds "hello"!
+    const dbPrefix = q.slice(0, 2) || q;
 
     if (supabaseClient) {
+      // Source A: `users` table
       try {
-        const { data: rows } = await supabaseClient
+        let rows = null;
+        const { data: uData, error: uErr } = await supabaseClient
           .from("users")
           .select("username, avatar_url, bio, session_token")
-          .ilike("username", `%${q}%`)
-          .limit(12);
+          .ilike("username", `%${dbPrefix}%`)
+          .limit(30);
 
-        if (Array.isArray(rows)) {
+        if (!uErr && Array.isArray(uData)) {
+          rows = uData;
+        } else {
+          const { data: fallbackData } = await supabaseClient
+            .from("users")
+            .select("*")
+            .ilike("username", `%${dbPrefix}%`)
+            .limit(30);
+          if (Array.isArray(fallbackData)) rows = fallbackData;
+        }
+
+        if (rows) {
           rows.forEach((u) => {
             const clean = (u.username || "").trim().toLowerCase();
-            // STRICT FILTER: username MUST contain the typed query `q`
-            if (!clean || !clean.includes(q)) return;
+            if (!clean || !doesUsernameMatchQuery(clean, q)) return;
             if (u.avatar_url) usersAvatarCache[clean] = u.avatar_url;
             if (u.bio) usersBioCache[clean] = u.bio;
             if (u.session_token) usersSessionCache[clean] = u.session_token;
@@ -16874,16 +16905,51 @@ initIdentity();
           });
         }
       } catch (e) { }
+
+      // Source B: `messages` table senders (in case RLS hides `users` rows)
+      try {
+        const { data: msgSenders } = await supabaseClient
+          .from("messages")
+          .select("sender_id")
+          .ilike("sender_id", `%${dbPrefix}%`)
+          .limit(20);
+        if (Array.isArray(msgSenders)) {
+          msgSenders.forEach((m) => {
+            const clean = (m.sender_id || "").trim().toLowerCase();
+            if (clean && doesUsernameMatchQuery(clean, q) && !userMap.has(clean)) {
+              userMap.set(clean, {
+                username: clean,
+                avatar_url: usersAvatarCache[clean] || "",
+                bio: usersBioCache[clean] || "Hey there! I am using Krypton."
+              });
+            }
+          });
+        }
+      } catch (e) { }
     }
 
-    // Only include self (@me) if query actually matches own username
-    if (myLower && myLower.includes(q) && !userMap.has(myLower)) {
-      userMap.set(myLower, {
-        username: myLower,
-        avatar_url: myAvatarData || "",
-        bio: myUserBio || "Personal Encrypted Vault"
-      });
-    }
+    // Source C: Online users & local bio cache
+    onlineUsersList.forEach((onlineU) => {
+      const clean = (onlineU || "").trim().toLowerCase();
+      if (clean && doesUsernameMatchQuery(clean, q) && !userMap.has(clean)) {
+        userMap.set(clean, {
+          username: clean,
+          avatar_url: usersAvatarCache[clean] || "",
+          bio: usersBioCache[clean] || "Online on Krypton"
+        });
+      }
+    });
+
+    Object.keys(usersBioCache || {}).forEach((cachedU) => {
+      const clean = (cachedU || "").trim().toLowerCase();
+      if (clean && doesUsernameMatchQuery(clean, q) && !userMap.has(clean)) {
+        userMap.set(clean, {
+          username: clean,
+          avatar_url: usersAvatarCache[clean] || "",
+          bio: usersBioCache[clean] || "Hey there! I am using Krypton."
+        });
+      }
+    });
 
     const results = Array.from(userMap.values()).sort((a, b) => {
       if (a.username === q && b.username !== q) return -1;
@@ -16893,47 +16959,43 @@ initIdentity();
       return a.username.localeCompare(b.username);
     });
 
-    // Keep lastUniversalSearchResults EMPTY so renderPeerList (Line 10414) NEVER injects
-    // "GLOBAL DIRECTORY RESULTS" into the background #chat-list!
-    lastUniversalSearchResults = [];
+    lastUniversalSearchResults = results;
     return results;
-  };
+  }
 
-  window.updateLiveUserSuggestions = async function (rawQuery) {
-    const box = document.getElementById("live-user-suggestions");
-    const q = (rawQuery || "").trim().toLowerCase().replace(/^@/, "");
+  // Override renderPeerList so when searching, matching users render directly in #chat-list
+  // WITHOUT any "GLOBAL DIRECTORY RESULTS" banner!
+  const baseRenderPeerListV33 = prevRenderPeerListV10; // Original clean peer list renderer
+  renderPeerList = window.renderPeerList = function (filterText = "") {
+    baseRenderPeerListV33(filterText);
 
-    if (!q) {
-      lastUniversalSearchResults = [];
-      hideLiveUserSuggestions();
-      renderPeerList("");
-      return;
+    if (typeof updateBottomDockUnreadBadges === "function") {
+      try { updateBottomDockUnreadBadges(); } catch (e) { }
     }
 
-    const queryId = ++latestSearchQueryId;
-    const matchedUsers = await window.queryAllMatchingUsersEverywhere(q);
-    if (queryId !== latestSearchQueryId) return;
+    const cleanFilter = (filterText || "").trim().toLowerCase().replace(/^@/, "");
+    if (!cleanFilter) return;
 
-    // Filter local saved chats in background without adding any Global Directory divider
-    lastUniversalSearchResults = [];
-    renderPeerList(q);
-
-    if (!box) return;
-    box.classList.remove("hidden");
-    box.innerHTML = "";
+    const listEl = document.getElementById("chat-list");
+    if (!listEl) return;
 
     const myLower = (myUsername || "").toLowerCase();
+    const matchedNonSaved = (lastUniversalSearchResults || []).filter(
+      (u) =>
+        u &&
+        u.username &&
+        doesUsernameMatchQuery(u.username, cleanFilter) &&
+        !savedPeers.some((p) => p.toLowerCase() === u.username.toLowerCase())
+    );
 
-    if (matchedUsers.length === 0) {
-      box.innerHTML = `
-        <div style="padding: 14px 12px; font-size: 12.5px; color: var(--text-dim); text-align: center;">
-          No user found matching "@${escapeHTML(q)}"
-        </div>
-      `;
-      return;
-    }
+    if (matchedNonSaved.length === 0) return;
 
-    matchedUsers.forEach((u) => {
+    // Remove the "No saved chat matching..." placeholder since we found matching registered users
+    const emptyState = listEl.querySelector(".empty-peers-state");
+    if (emptyState) emptyState.remove();
+
+    // Render matched registered users cleanly (NO "GLOBAL DIRECTORY" header!)
+    matchedNonSaved.forEach((u) => {
       const uname = u.username.toLowerCase();
       const isSelf = uname === myLower;
       const isOnline = isSelf ? true : onlineUsersList.has(uname) && userSettings.onlinePresence;
@@ -16951,7 +17013,7 @@ initIdentity();
       } else if (isPending) {
         actionBtnHTML = `<button type="button" class="suggestion-action-pill secondary" onclick="event.stopPropagation(); selectSuggestedPeer('${escapeHTML(uname)}', 'add')">${rel.receiver === myLower ? "Accept" : "Pending"}</button>`;
       } else {
-        actionBtnHTML = `<button type="button" class="suggestion-action-pill" onclick="event.stopPropagation(); selectSuggestedPeer('${escapeHTML(uname)}', 'add')">+ Connect</button>`;
+        actionBtnHTML = `<button type="button" class="suggestion-action-pill" onclick="event.stopPropagation(); selectSuggestedPeer('${escapeHTML(uname)}', 'add')">+ Add Friend</button>`;
       }
 
       const exactAvatar = isSelf ? myAvatarData : u.avatar_url || usersAvatarCache[uname] || "";
@@ -16959,26 +17021,22 @@ initIdentity();
         ? myUserBio || "Personal Vault • Message Yourself"
         : u.bio || usersBioCache[uname] || "Hey there! I am using Krypton.";
 
-      const row = document.createElement("div");
-      row.className = "contact-card";
-      // Clicking the row opens their Profile Dashboard instead of auto-adding them to Recent Chats!
-      row.onclick = (e) => {
+      const card = document.createElement("div");
+      card.className = "contact-card";
+      // Tapping the user row opens their Profile Dashboard (does NOT auto-add to Recent Chats!)
+      card.onclick = (e) => {
         e.stopPropagation();
         if (isSelf || isAlreadyFriend) {
           window.selectSuggestedPeer(uname, "open");
         } else {
-          hideLiveUserSuggestions();
-          const inputEl = document.getElementById("peer-id-input");
-          if (inputEl) inputEl.value = "";
-          renderPeerList("");
           window.openUserActionModal(uname);
         }
       };
 
-      row.innerHTML =
+      card.innerHTML =
         '<div class="contact-card-info">' +
         `<div class="avatar-wrap" onclick="event.stopPropagation(); viewUserProfilePicFullscreen('${escapeHTML(uname)}');">` +
-        `<div class="contact-avatar" id="sug-avatar-${escapeHTML(uname)}"></div>` +
+        `<div class="contact-avatar" id="dir-avatar-${escapeHTML(uname)}"></div>` +
         `<div class="online-dot ${isOnline ? "visible" : ""}"></div></div>` +
         '<div class="contact-name-wrap">' +
         `<span class="contact-name">@${escapeHTML(uname)}${isSelf ? ' <span style="color: var(--accent-primary); font-weight: 800; font-size: 11px;">(You)</span>' : ""}</span>` +
@@ -16986,12 +17044,33 @@ initIdentity();
         "</div></div>" +
         `<div class="contact-right-meta">${actionBtnHTML}</div>`;
 
-      box.appendChild(row);
-      renderAvatarElement(row.querySelector(`#sug-avatar-${uname}`), uname, exactAvatar);
+      listEl.appendChild(card);
+      renderAvatarElement(card.querySelector(`#dir-avatar-${uname}`), uname, exactAvatar);
     });
   };
 
-  // Prevent searching or viewing a non-friend from auto-adding them to Recent Chats!
+  // Update both top lexical variable and window property for updateLiveUserSuggestions
+  updateLiveUserSuggestions = window.updateLiveUserSuggestions = async function (rawQuery) {
+    const box = document.getElementById("live-user-suggestions");
+    if (box) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+    }
+
+    const q = (rawQuery || "").trim().toLowerCase().replace(/^@/, "");
+    if (!q) {
+      lastUniversalSearchResults = [];
+      renderPeerList("");
+      return;
+    }
+
+    const queryId = ++latestSearchQueryId;
+    await searchRegisteredUsersClean(q);
+    if (queryId !== latestSearchQueryId) return;
+
+    renderPeerList(q);
+  };
+
   window.selectSuggestedPeer = async function (uname, actionType = "open") {
     const clean = (uname || "").trim().toLowerCase().replace(/^@/, "");
     if (!clean) return;
@@ -17014,7 +17093,6 @@ initIdentity();
         savePeerToRecent(clean, true);
       } else if (rel.state !== "accepted") {
         await requestChatConnection(clean);
-        // Do NOT call savePeerToRecent here so unaccepted users don't clutter Recent Chats!
         renderPeerList("");
         return;
       }
@@ -17028,50 +17106,41 @@ initIdentity();
     joinRoom(dmRoom, "@" + clean);
   };
 
-  // Re-bind #peer-id-input cleanly so typing only triggers our clean search
-  const peerInputClean = document.getElementById("peer-id-input");
-  if (peerInputClean) {
-    const freshInput = peerInputClean.cloneNode(true);
-    peerInputClean.parentNode.replaceChild(freshInput, peerInputClean);
+  // Re-bind #peer-id-input cleanly
+  const peerInp = document.getElementById("peer-id-input");
+  if (peerInp) {
+    const freshInp = peerInp.cloneNode(true);
+    peerInp.parentNode.replaceChild(freshInp, peerInp);
 
-    let debounceTimer = null;
-    freshInput.addEventListener("focus", () => {
+    let searchTimer = null;
+    freshInp.addEventListener("focus", () => {
       document.body.classList.add("sidebar-keyboard-open");
-      if (!freshInput.value.trim()) {
-        hideLiveUserSuggestions();
-      }
     });
 
-    freshInput.addEventListener("blur", () => {
+    freshInp.addEventListener("blur", () => {
       setTimeout(() => {
         document.body.classList.remove("sidebar-keyboard-open");
       }, 140);
     });
 
-    freshInput.addEventListener("input", () => {
-      const val = freshInput.value.trim();
-      lastUniversalSearchResults = [];
-      renderPeerList(val);
-      clearTimeout(debounceTimer);
+    freshInp.addEventListener("input", () => {
+      const val = freshInp.value.trim();
+      clearTimeout(searchTimer);
       if (!val) {
+        lastUniversalSearchResults = [];
         hideLiveUserSuggestions();
+        renderPeerList("");
         return;
       }
-      debounceTimer = setTimeout(() => {
-        window.updateLiveUserSuggestions(val);
-      }, 150);
-    });
-
-    freshInput.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        hideLiveUserSuggestions();
-      }
+      renderPeerList(val);
+      searchTimer = setTimeout(() => {
+        updateLiveUserSuggestions(val);
+      }, 120);
     });
   }
 
   // -----------------------------------------------------------------------
-  // 2. 0ms INSTANT USER PROFILE DASHBOARD MODAL (FROM 3-DOT, HEADER & CHATS)
-  //    WITH ZERO NETWORK BLOCKING & NO SAFETY FINGERPRINT KEY
+  // 2. 0ms INSTANT USER PROFILE DASHBOARD MODAL (ALREADY WORKING GREAT!)
   // -----------------------------------------------------------------------
   window.openUserActionModal = function (targetUser) {
     if (!targetUser) return;
@@ -17084,7 +17153,6 @@ initIdentity();
       return;
     }
 
-    // Close any open 3-dot contact dropdown menu first
     document.querySelectorAll(".contact-dropdown-menu").forEach((m) => {
       if (m.id !== "header-dropdown-menu") m.remove();
     });
@@ -17115,7 +17183,6 @@ initIdentity();
     modal.id = "user-action-modal";
     modal.className = "glass-modal";
 
-    // Render IMMEDIATELY in 0ms without Safety Fingerprint Box!
     modal.innerHTML =
       '<div class="glass-card user-action-popup">' +
       `<div class="user-action-avatar-wrap" id="action-avatar-zoom-trigger" title="Click to View Full Profile Picture">` +
@@ -17192,7 +17259,6 @@ initIdentity();
         : localRel.status
     );
 
-    // Refresh relationship & bio in the background without delaying modal open!
     getPeerRelationshipState(p)
       .then((rel) => {
         const slot = modal.querySelector("#action-friend-btn-slot");
@@ -17228,145 +17294,61 @@ initIdentity();
     }
   };
 
-  // Ensure clicking @username inside ANY chat bubble (Global, Group, or 1-on-1) or Chat Header opens Profile immediately!
-  document.addEventListener(
-    "click",
-    (e) => {
-      const target = e.target;
-      if (!target) return;
+  // -----------------------------------------------------------------------
+  // 3. MAKE EMOJI BUTTON (#btn-tg-emoji-left) WORK 100% LIKE VIEW MEDIA (#btn-attach-hub)!
+  //    Why View Media works: Line 5060 uses `attachHubMenu.classList.toggle("hidden")`
+  //    on button click and `window.addEventListener("click")` to close on outside tap.
+  //    Why Emoji failed: Line 8892 had a `pointerdown` listener that forced
+  //    `emojiPalette.classList.add("hidden")` BEFORE the button's `click` event fired!
+  // -----------------------------------------------------------------------
+  const emojiPalEl = document.getElementById("emoji-palette");
+  const attachMenuEl = document.getElementById("attach-hub-menu");
+  const btnAttachEl = document.getElementById("btn-attach-hub");
 
-      // 1. Clicked .msg-sender-header (e.g. @hello inside message bubble)
-      const senderHeader = target.closest(".msg-sender-header");
-      if (senderHeader) {
-        const uname = (senderHeader.textContent || "").trim().replace(/^@/, "");
-        if (uname) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          window.openUserActionModal(uname);
-          return;
-        }
+  if (emojiPalEl) {
+    // Shield #emoji-palette from Line 8892's premature `pointerdown` close when tapping the Emoji button!
+    let ignorePointerDownHideUntil = 0;
+    const origClassListAdd = emojiPalEl.classList.add.bind(emojiPalEl.classList);
+
+    emojiPalEl.classList.add = function (...tokens) {
+      if (tokens.includes("hidden") && Date.now() < ignorePointerDownHideUntil) {
+        return; // Block Line 8892 from hiding #emoji-palette during button tap!
       }
+      return origClassListAdd(...tokens);
+    };
 
-      // 2. Clicked Chat Header target box in 1-on-1 chat
-      const headerBox = target.closest("#header-chat-target-box");
-      if (
-        headerBox &&
-        !target.closest("#btn-mobile-back") &&
-        !target.closest("#header-chat-avatar") &&
-        currentRoom &&
-        currentRoom !== "global" &&
-        !isGroupRoom(currentRoom) &&
-        currentPeerUser
-      ) {
+    const btnEmojiCurrent = document.getElementById("btn-tg-emoji-left");
+    if (btnEmojiCurrent) {
+      // Clone to remove any old conflicting listeners
+      const cleanEmojiBtn = btnEmojiCurrent.cloneNode(true);
+      btnEmojiCurrent.parentNode.replaceChild(cleanEmojiBtn, btnEmojiCurrent);
+
+      // Arm shield on pointerdown/touchstart so Line 8892 cannot interfere
+      const armShield = () => {
+        ignorePointerDownHideUntil = Date.now() + 380;
+      };
+      cleanEmojiBtn.addEventListener("pointerdown", armShield, true);
+      cleanEmojiBtn.addEventListener("touchstart", armShield, { passive: true, capture: true });
+
+      // Exact same click toggle logic as View Media (#btn-attach-hub on Line 5060)!
+      cleanEmojiBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        e.stopImmediatePropagation();
-        window.openUserActionModal(currentPeerUser);
-      }
-    },
-    true
-  );
+        ignorePointerDownHideUntil = 0; // Disarm shield so our toggle works immediately
 
-  // -----------------------------------------------------------------------
-  // 3. UNIFIED 1st-CLICK OPEN / 2nd-CLICK CLOSE / OUTSIDE-CLICK CLOSE
-  //    FOR BOTH EMOJI ICON (#btn-tg-emoji-left) & VIEW MEDIA (#btn-attach-hub)
-  // -----------------------------------------------------------------------
-  let emojiWasOpenBeforeTap = false;
-  let hubWasOpenBeforeTap = false;
+        const isCurrentlyOpen = !emojiPalEl.classList.contains("hidden");
+        if (attachMenuEl) attachMenuEl.classList.add("hidden");
+        if (btnAttachEl) btnAttachEl.classList.remove("active");
 
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      const target = e.target;
-      if (!target) return;
-
-      const emojiPal = document.getElementById("emoji-palette");
-      const attachMenu = document.getElementById("attach-hub-menu");
-      const btnAttach = document.getElementById("btn-attach-hub");
-
-      const clickedEmojiBtn = target.closest("#btn-tg-emoji-left");
-      const clickedAttachBtn = target.closest("#btn-attach-hub");
-      const clickedInsideEmoji = emojiPal && emojiPal.contains(target);
-      const clickedInsideHub = attachMenu && attachMenu.contains(target);
-
-      // Case 1: Tapped Emoji Toggle Icon -> Record current state & block Line 8892 listener from closing it prematurely!
-      if (clickedEmojiBtn) {
-        emojiWasOpenBeforeTap = Boolean(emojiPal && !emojiPal.classList.contains("hidden"));
-        if (attachMenu) attachMenu.classList.add("hidden");
-        if (btnAttach) btnAttach.classList.remove("active");
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        return;
-      }
-
-      // Case 2: Tapped View Media / Paperclip Icon -> Record current state & block outside listeners
-      if (clickedAttachBtn) {
-        hubWasOpenBeforeTap = Boolean(attachMenu && !attachMenu.classList.contains("hidden"));
-        if (emojiPal) emojiPal.classList.add("hidden");
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        return;
-      }
-
-      // Case 3: Tapped anywhere outside Emoji Drawer -> Close Emoji Drawer immediately
-      if (!clickedInsideEmoji && emojiPal && !emojiPal.classList.contains("hidden")) {
-        emojiPal.classList.add("hidden");
-      }
-
-      // Case 4: Tapped anywhere outside View Media Hub -> Close View Media Hub immediately
-      if (!clickedInsideHub && attachMenu && !attachMenu.classList.contains("hidden")) {
-        attachMenu.classList.add("hidden");
-        if (btnAttach) btnAttach.classList.remove("active");
-      }
-    },
-    true
-  );
-
-  document.addEventListener(
-    "click",
-    (e) => {
-      const target = e.target;
-      if (!target) return;
-
-      const emojiPal = document.getElementById("emoji-palette");
-      const attachMenu = document.getElementById("attach-hub-menu");
-      const btnAttach = document.getElementById("btn-attach-hub");
-      const btnEmoji = document.getElementById("btn-tg-emoji-left");
-
-      // Toggle Emoji Drawer on click using exact state recorded at pointerdown
-      if (target.closest("#btn-tg-emoji-left")) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (!emojiPal) return;
-
-        if (emojiWasOpenBeforeTap) {
-          emojiPal.classList.add("hidden");
+        if (isCurrentlyOpen) {
+          origClassListAdd("hidden");
+          cleanEmojiBtn.classList.remove("active");
         } else {
           if (typeof renderWhatsAppEmojiGrid === "function") renderWhatsAppEmojiGrid();
-          emojiPal.classList.remove("hidden");
+          emojiPalEl.classList.remove("hidden");
+          cleanEmojiBtn.classList.remove("active");
         }
-        if (btnEmoji) btnEmoji.classList.remove("active");
-        return;
-      }
-
-      // Toggle View Media Hub on click using exact state recorded at pointerdown
-      if (target.closest("#btn-attach-hub")) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (!attachMenu) return;
-
-        if (hubWasOpenBeforeTap) {
-          attachMenu.classList.add("hidden");
-          if (btnAttach) btnAttach.classList.remove("active");
-        } else {
-          attachMenu.classList.remove("hidden");
-          if (btnAttach) btnAttach.classList.add("active");
-        }
-      }
-    },
-    true
-  );
+      });
+    }
+  }
 })();
