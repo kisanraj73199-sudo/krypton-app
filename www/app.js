@@ -17568,3 +17568,424 @@ initIdentity();
     true
   );
 })();
+// =========================================================================
+// 33. FEATURE v35000 (WHATSAPP-STYLE 3-STAGE TICKS & MESSAGE INFO TIMESTAMPS):
+//     1. SINGLE TICK (✓ SENT) -> DOUBLE TICK (✓✓ DELIVERED) -> BLUE TICK (✓✓ READ)
+//     2. AUTO-INFER READ & SEEN TIME FOR OLD MESSAGES WHEN PEER REPLIES
+//     3. REALTIME + PERSISTENT SEEN TIMESTAMP SYNC ACROSS PRESENCE & ROOM
+//     4. ACCURATE SENT / DELIVERED / SEEN TIMESTAMPS IN MESSAGE INFO MODAL
+// =========================================================================
+
+(function () {
+  // Persistent store: { [msgId]: { sentAt, deliveredAt, seenAt, seenByGroupMembers: {} } }
+  let receiptStore = {};
+  try {
+    receiptStore = JSON.parse(localStorage.getItem("krypton_msg_info_receipts") || "{}");
+  } catch (e) {
+    receiptStore = {};
+  }
+
+  // Also store per-room last seen timestamp by peer: { [roomId]: timestamp }
+  let roomPeerLastSeenMap = {};
+  try {
+    roomPeerLastSeenMap = JSON.parse(localStorage.getItem("krypton_room_peer_seen_ts") || "{}");
+  } catch (e) {
+    roomPeerLastSeenMap = {};
+  }
+
+  function saveReceiptsToDisk() {
+    try {
+      localStorage.setItem("krypton_msg_info_receipts", JSON.stringify(receiptStore));
+      localStorage.setItem("krypton_room_peer_seen_ts", JSON.stringify(roomPeerLastSeenMap));
+    } catch (e) {}
+  }
+
+  function ensureReceiptEntry(msgId, createdAtTs) {
+    const cleanId = String(msgId || "").replace("msg-row-", "");
+    if (!cleanId) return null;
+    const baseTs = createdAtTs || Date.now();
+    if (!receiptStore[cleanId]) {
+      receiptStore[cleanId] = {
+        sentAt: baseTs,
+        deliveredAt: null,
+        seenAt: null,
+        seenByGroupMembers: {}
+      };
+    } else if (!receiptStore[cleanId].sentAt) {
+      receiptStore[cleanId].sentAt = baseTs;
+    }
+    return receiptStore[cleanId];
+  }
+
+  function setTickDOMState(row, state) {
+    if (!row) return;
+    const tickEl = row.querySelector(".msg-status-ticks");
+    if (!tickEl) return;
+
+    if (state === "read") {
+      tickEl.className = "msg-status-ticks read";
+      tickEl.textContent = "✓✓";
+      tickEl.dataset.persistentRead = "true";
+      tickEl.dataset.persistentDelivered = "true";
+    } else if (state === "delivered") {
+      if (tickEl.dataset.persistentRead === "true") return;
+      tickEl.className = "msg-status-ticks delivered";
+      tickEl.textContent = "✓✓";
+      tickEl.dataset.persistentDelivered = "true";
+    } else {
+      if (tickEl.dataset.persistentRead === "true" || tickEl.dataset.persistentDelivered === "true") return;
+      tickEl.className = "msg-status-ticks";
+      tickEl.textContent = "✓";
+    }
+  }
+
+  // Core Engine: Scan all messages in #message-container and compute exact Sent / Delivered / Read state!
+  function evaluateAndSyncAllMessageTicks(forceMarkAllSentAsRead = false, customSeenTs = null, readerUser = "") {
+    if (!currentRoom || currentRoom === "global") return;
+    const container = document.getElementById("message-container");
+    if (!container) return;
+
+    const allRows = Array.from(container.querySelectorAll(".message-row"));
+    if (allRows.length === 0) return;
+
+    const myLower = (myUsername || "").toLowerCase();
+    const isSelf = typeof isSelfRoom === "function" && isSelfRoom(currentRoom);
+    const isGroup = typeof isGroupRoom === "function" && isGroupRoom(currentRoom);
+    const isPeerOnline =
+      isSelf ||
+      (currentPeerUser && onlineUsersList && onlineUsersList.has(currentPeerUser.toLowerCase()));
+
+    // Find the latest timestamp of any message sent by the OTHER person in this room.
+    // Any message we sent BEFORE their reply was 100% Delivered & Seen by them!
+    let latestReceivedMsgTs = 0;
+    let latestReceivedSender = currentPeerUser || "";
+
+    allRows.forEach((r) => {
+      const s = (r.dataset.sender || "").toLowerCase();
+      const ts = parseInt(r.dataset.msgTs || "0", 10);
+      if (s && s !== myLower && ts > latestReceivedMsgTs) {
+        latestReceivedMsgTs = ts;
+        latestReceivedSender = s;
+      }
+    });
+
+    const roomLastSeenTs = roomPeerLastSeenMap[currentRoom] || 0;
+    const effectiveSeenCutoffTs = Math.max(
+      latestReceivedMsgTs,
+      roomLastSeenTs,
+      forceMarkAllSentAsRead ? Date.now() + 5000 : 0
+    );
+
+    allRows.forEach((row) => {
+      if (!row.classList.contains("sent")) return;
+
+      const cleanId = (row.id || "").replace("msg-row-", "");
+      const msgTs = parseInt(row.dataset.msgTs || "0", 10) || Date.now();
+      const entry = ensureReceiptEntry(cleanId, msgTs);
+      if (!entry) return;
+
+      const tickEl = row.querySelector(".msg-status-ticks");
+      const alreadyReadInDB =
+        row.dataset.dbIsRead === "true" ||
+        (tickEl && tickEl.dataset.persistentRead === "true");
+
+      // Condition for READ (Blue Double Tick ✓✓):
+      // 1. Self chat, OR 2. Marked is_read in DB/cache, OR 3. Sent before peer's last reply / seen cutoff, OR 4. Live seen event
+      if (isSelf || alreadyReadInDB || (effectiveSeenCutoffTs > 0 && msgTs <= effectiveSeenCutoffTs)) {
+        const inferredSeenTs =
+          entry.seenAt ||
+          customSeenTs ||
+          (latestReceivedMsgTs >= msgTs ? latestReceivedMsgTs : Date.now());
+        if (!entry.deliveredAt) entry.deliveredAt = Math.min(msgTs + 1200, inferredSeenTs);
+        if (!entry.seenAt) entry.seenAt = inferredSeenTs;
+
+        const whoSaw = (readerUser || latestReceivedSender || currentPeerUser || "").toLowerCase();
+        if (whoSaw && whoSaw !== myLower) {
+          if (!entry.seenByGroupMembers) entry.seenByGroupMembers = {};
+          if (!entry.seenByGroupMembers[whoSaw]) {
+            entry.seenByGroupMembers[whoSaw] = entry.seenAt;
+          }
+        }
+        setTickDOMState(row, "read");
+      }
+      // Condition for DELIVERED (Grey Double Tick ✓✓):
+      // Peer is currently online or message was previously delivered
+      else if (isPeerOnline || entry.deliveredAt) {
+        if (!entry.deliveredAt) entry.deliveredAt = Date.now();
+        setTickDOMState(row, "delivered");
+      }
+      // Otherwise SENT (Single Tick ✓):
+      else {
+        setTickDOMState(row, "sent");
+      }
+    });
+
+    saveReceiptsToDisk();
+  }
+
+  // Hook createMessageNode so every message row stores its exact timestamp (`data-msg-ts`, `data-created-at-iso`)
+  // and immediately gets the right tick state!
+  const prevCreateMsgNodeV35 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateMsgNodeV35(msg, rawTextOverride);
+    if (!node || !msg) return node;
+
+    const iso = msg.created_at || new Date().toISOString();
+    const ts = new Date(iso).getTime() || Date.now();
+    node.dataset.createdAtIso = iso;
+    node.dataset.msgTs = String(ts);
+    if (msg.is_read === true) {
+      node.dataset.dbIsRead = "true";
+    }
+
+    const cleanId = String(msg.id || node.id || "").replace("msg-row-", "");
+    const entry = ensureReceiptEntry(cleanId, ts);
+
+    if (entry) {
+      if (msg.is_read === true || entry.seenAt) {
+        if (!entry.deliveredAt) entry.deliveredAt = ts + 1000;
+        if (!entry.seenAt) entry.seenAt = ts + 2500;
+        setTickDOMState(node, "read");
+      } else if (entry.deliveredAt) {
+        setTickDOMState(node, "delivered");
+      }
+    }
+
+    setTimeout(() => evaluateAndSyncAllMessageTicks(false), 30);
+    return node;
+  };
+
+  // Broadcast Seen Receipt over BOTH Room Channel AND Global Presence Channel
+  // so the sender receives Blue Ticks & Seen Time even if they switch rooms!
+  function broadcastUniversalSeenReceipt() {
+    if (!currentRoom || currentRoom === "global" || !myUsername) return;
+    const nowTs = Date.now();
+    const payload = {
+      room: currentRoom,
+      reader: myUsername.toLowerCase(),
+      targetPeer: (currentPeerUser || "").toLowerCase(),
+      seenAt: nowTs
+    };
+
+    try {
+      if (activeSubscription) {
+        activeSubscription.send({
+          type: "broadcast",
+          event: "seen-messages",
+          payload: payload
+        });
+        activeSubscription.send({
+          type: "broadcast",
+          event: "detailed-seen-receipt",
+          payload: payload
+        });
+      }
+    } catch (e) {}
+
+    try {
+      if (presenceChannel) {
+        presenceChannel.send({
+          type: "broadcast",
+          event: "universal-seen-sync",
+          payload: payload
+        });
+      }
+    } catch (e) {}
+  }
+
+  // Listen on Global Presence Channel for universal seen & delivery receipts
+  const prevInitPresenceV35 = window.initPresenceTracker;
+  window.initPresenceTracker = function () {
+    if (typeof prevInitPresenceV35 === "function") prevInitPresenceV35();
+    if (!presenceChannel) return;
+
+    presenceChannel.on("broadcast", { event: "universal-seen-sync" }, (eventObj) => {
+      const p = eventObj.payload;
+      if (!p || !p.room || !p.reader) return;
+      const myLower = (myUsername || "").toLowerCase();
+      if (p.reader.toLowerCase() === myLower) return;
+
+      const seenTs = p.seenAt || Date.now();
+      roomPeerLastSeenMap[p.room] = Math.max(roomPeerLastSeenMap[p.room] || 0, seenTs);
+      saveReceiptsToDisk();
+
+      // If we are currently viewing that room, turn all ticks Blue immediately!
+      if (currentRoom === p.room) {
+        evaluateAndSyncAllMessageTicks(true, seenTs, p.reader);
+      }
+    });
+  };
+
+  // Override update1on1MessageTicks so any call to it runs our full WhatsApp tick engine
+  window.update1on1MessageTicks = function (isRead) {
+    if (isRead && currentRoom) {
+      roomPeerLastSeenMap[currentRoom] = Date.now();
+    }
+    evaluateAndSyncAllMessageTicks(Boolean(isRead), Date.now(), currentPeerUser);
+  };
+
+  // Hook joinRoom to evaluate ticks on room open and broadcast seen receipt when viewing messages
+  const prevJoinRoomV35 = window.joinRoom;
+  window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+    await prevJoinRoomV35(roomId, displayName, pushHistory);
+
+    evaluateAndSyncAllMessageTicks(false);
+    setTimeout(() => evaluateAndSyncAllMessageTicks(false), 350);
+
+    if (roomId && roomId !== "global") {
+      setTimeout(broadcastUniversalSeenReceipt, 250);
+      setTimeout(broadcastUniversalSeenReceipt, 1200);
+    }
+  };
+
+  // Also broadcast seen receipt whenever a new message arrives while we have the chat open
+  const msgContainerEl = document.getElementById("message-container");
+  if (msgContainerEl && window.MutationObserver) {
+    const feedObs = new MutationObserver(() => {
+      evaluateAndSyncAllMessageTicks(false);
+      if (currentRoom && currentRoom !== "global" && !document.hidden) {
+        broadcastUniversalSeenReceipt();
+      }
+    });
+    feedObs.observe(msgContainerEl, { childList: true });
+  }
+
+  // Upgrade openWhatsAppMessageInfoModal so it always shows accurate Sent, Delivered & Read/Seen times!
+  function formatWhatsAppReceiptTime(ts) {
+    if (!ts) return null;
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+    const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return isToday
+      ? `Today at ${timeStr}`
+      : `${d.toLocaleDateString([], { day: "2-digit", month: "short" })} at ${timeStr}`;
+  }
+
+  window.openWhatsAppMessageInfoModal = function (msgId) {
+    const cleanId = String(msgId || "").replace("msg-row-", "");
+    const row = document.getElementById("msg-row-" + cleanId);
+    const modal = document.getElementById("krypton-msg-info-modal");
+    const bodyEl = document.getElementById("msg-info-modal-body");
+    if (!row || !modal || !bodyEl) return;
+
+    // Run tick evaluation first so receiptStore[cleanId] is 100% up-to-date
+    evaluateAndSyncAllMessageTicks(false);
+
+    const sender = row.dataset.sender || myUsername;
+    const msgTs =
+      parseInt(row.dataset.msgTs || "0", 10) ||
+      new Date(row.dataset.createdAtIso || Date.now()).getTime() ||
+      Date.now();
+
+    const entry = ensureReceiptEntry(cleanId, msgTs);
+    const tickEl = row.querySelector(".msg-status-ticks");
+    const isReadNow = Boolean(
+      (tickEl && tickEl.classList.contains("read")) || entry.seenAt
+    );
+    const isDeliveredNow = Boolean(
+      isReadNow || (tickEl && tickEl.classList.contains("delivered")) || entry.deliveredAt
+    );
+
+    const sentText = formatWhatsAppReceiptTime(entry.sentAt || msgTs) || "Just now";
+    const deliveredText = isDeliveredNow
+      ? formatWhatsAppReceiptTime(entry.deliveredAt || entry.sentAt || msgTs)
+      : "Pending (User offline)";
+    const seenText = isReadNow
+      ? formatWhatsAppReceiptTime(entry.seenAt || entry.deliveredAt || msgTs)
+      : "Not seen yet";
+
+    const textEl = row.querySelector(".msg-text-line");
+    const msgType = row.dataset.msgType || "text";
+    let previewSnippet = textEl ? textEl.textContent.trim() : "Encrypted Message";
+    if (msgType === "media") previewSnippet = "📷 Photo";
+    else if (msgType === "voice") previewSnippet = "🎤 Voice Note";
+    else if (msgType === "files") previewSnippet = "📎 Document / File";
+
+    let groupSectionHTML = "";
+    if (typeof isGroupRoom === "function" && isGroupRoom(currentRoom)) {
+      const seenMap = entry.seenByGroupMembers || {};
+      const grp = (savedGroups && savedGroups[currentRoom]) || { members: [] };
+      const myLower = (myUsername || "").toLowerCase();
+      const otherMembers = (grp.members || [])
+        .map((m) => m.toLowerCase())
+        .filter((m) => m && m !== myLower);
+
+      const seenCount = otherMembers.filter((m) => Boolean(seenMap[m])).length;
+      const onlineCount = otherMembers.filter((m) => onlineUsersList && onlineUsersList.has(m)).length;
+
+      let membersRows = "";
+      otherMembers.forEach((m) => {
+        const isOnline = Boolean(onlineUsersList && onlineUsersList.has(m));
+        const sTs = seenMap[m];
+        const rightBadge = sTs
+          ? `<span class="msg-info-member-time" style="color: #38bdf8;">✓✓ ${escapeHTML(formatWhatsAppReceiptTime(sTs))}</span>`
+          : `<span style="font-size: 10.5px; color: var(--text-dim);">${isOnline ? "✓✓ Delivered" : "✓ Sent"}</span>`;
+
+        membersRows += `
+          <div class="msg-info-member-receipt">
+            <div style="display: flex; align-items: center; gap: 7px;">
+              <span class="msg-info-member-user">@${escapeHTML(m)}</span>
+              <span class="msg-info-online-pill ${isOnline ? "is-online" : "is-offline"}">
+                ${isOnline ? "● Online" : "○ Offline"}
+              </span>
+            </div>
+            ${rightBadge}
+          </div>
+        `;
+      });
+
+      groupSectionHTML = `
+        <div class="msg-info-status-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+            <span class="msg-info-group-section-title">SEEN BY ${seenCount} OF ${otherMembers.length} MEMBERS</span>
+            <span class="msg-info-online-pill is-online">${onlineCount} Online Now</span>
+          </div>
+          ${membersRows || '<div style="font-size: 11.5px; color: var(--text-dim);">No other members in this group.</div>'}
+        </div>
+      `;
+    }
+
+    bodyEl.innerHTML = `
+      <div class="msg-info-preview-box">
+        <span class="msg-info-preview-sender">@${escapeHTML(sender)}</span>
+        <span class="msg-info-preview-text">${escapeHTML(previewSnippet.slice(0, 120))}</span>
+      </div>
+
+      <div class="msg-info-status-card">
+        <div class="msg-info-row">
+          <div class="msg-info-left">
+            <span style="color: #38bdf8; font-weight: 800; font-size: 14px;">✓✓</span>
+            <span>Read / Seen</span>
+          </div>
+          <span class="msg-info-right" style="color: ${isReadNow ? "#38bdf8" : "var(--text-dim)"}; font-weight: ${isReadNow ? "700" : "500"};">${escapeHTML(seenText)}</span>
+        </div>
+
+        <div class="msg-info-row">
+          <div class="msg-info-left">
+            <span style="color: var(--text-muted); font-weight: 800; font-size: 14px;">✓✓</span>
+            <span>Delivered</span>
+          </div>
+          <span class="msg-info-right">${escapeHTML(deliveredText)}</span>
+        </div>
+
+        <div class="msg-info-row">
+          <div class="msg-info-left">
+            <span style="color: var(--text-dim); font-weight: 800; font-size: 14px;">✓</span>
+            <span>Sent</span>
+          </div>
+          <span class="msg-info-right">${escapeHTML(sentText)}</span>
+        </div>
+      </div>
+
+      ${groupSectionHTML}
+    `;
+
+    modal.classList.remove("hidden");
+    if (window.lucide) lucide.createIcons({ nodes: [modal] });
+  };
+})();
