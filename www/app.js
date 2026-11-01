@@ -17597,7 +17597,7 @@ initIdentity();
     try {
       localStorage.setItem("krypton_msg_info_receipts", JSON.stringify(receiptStore));
       localStorage.setItem("krypton_room_peer_seen_ts", JSON.stringify(roomPeerLastSeenMap));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function ensureReceiptEntry(msgId, createdAtTs) {
@@ -17780,7 +17780,7 @@ initIdentity();
           payload: payload
         });
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       if (presenceChannel) {
@@ -17790,7 +17790,7 @@ initIdentity();
           payload: payload
         });
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Listen on Global Presence Channel for universal seen & delivery receipts
@@ -17987,5 +17987,570 @@ initIdentity();
 
     modal.classList.remove("hidden");
     if (window.lucide) lucide.createIcons({ nodes: [modal] });
+  };
+})();
+// =========================================================================
+// 34. FEATURE v36000 (7-POINT WHATSAPP GROUP ADMIN, CALL & UI MASTER PATCH):
+//     1. STRICT GROUP MUTE ENFORCEMENT ("ONLY ADMINS CAN SEND MESSAGES")
+//     2. WHATSAPP CO-ADMIN SYSTEM (OWNER PROMOTES ADMINS; ADMINS HAVE FULL
+//        POWER EXCEPT PROMOTING OTHER ADMINS)
+//     3. "ALLOW MEMBERS TO SEE MEMBER LIST" LIVE SYNC & PRIVACY ENFORCEMENT
+//     4. INSTANT CALL CANCEL STOP-RINGING (CALLER HANGUP STOPS RECEIVER RING
+//        IMMEDIATELY & BLOCKS STALE CALL ACCEPT)
+//     5. 25-SECOND LIMITED RING TIMER (LIKE WHATSAPP)
+//     6. COMPLETE IN-CHAT CALL LOG BUBBLES (COMPLETED DURATION, MISSED, CANCELLED)
+//     7. COLORFUL "Online • Active" HEADER STATUS IN CHATS
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. HELPER: TRUE CREATOR (OWNER) vs GROUP ADMIN (OWNER OR CO-ADMIN)
+  // -----------------------------------------------------------------------
+  window.isTrueGroupCreator = function (roomId = currentRoom) {
+    if (!isGroupRoom(roomId)) return false;
+    const grp = savedGroups[roomId];
+    if (!grp) return false;
+    const me = (myUsername || "").toLowerCase();
+    if (grp.ownerToken && mySessionId && grp.ownerToken === mySessionId) return true;
+    return (grp.owner || "").toLowerCase() === me;
+  };
+
+  window.isGroupAdminUser = function (roomId = currentRoom, targetUser = myUsername) {
+    if (!isGroupRoom(roomId)) return false;
+    const grp = savedGroups[roomId];
+    if (!grp) return false;
+    const u = (targetUser || "").toLowerCase();
+    if (!u) return false;
+    if ((grp.owner || "").toLowerCase() === u) return true;
+    const admins = Array.isArray(grp.admins) ? grp.admins.map((a) => a.toLowerCase()) : [];
+    return admins.includes(u);
+  };
+
+  // Override isCurrentGroupOwner so Co-Admins get full admin power (edit group pic, bio, mute, pin, remove regular members)
+  // while isTrueGroupCreator is reserved strictly for making/removing Admins!
+  window.isCurrentGroupOwner = function (roomId = currentRoom) {
+    return window.isTrueGroupCreator(roomId) || window.isGroupAdminUser(roomId, myUsername);
+  };
+
+  // -----------------------------------------------------------------------
+  // 2. ENFORCE "ONLY ADMINS CAN SEND MESSAGES" & "MEMBER LIST PRIVACY"
+  // -----------------------------------------------------------------------
+  window.updateGroupInputBarLockState = function () {
+    const lockBanner = document.getElementById("chat-lock-banner");
+    const lockText = document.getElementById("lock-banner-text");
+    const lockActions = document.getElementById("lock-banner-actions");
+    const inputBar = document.getElementById("chat-input-bar");
+    if (!lockBanner || !inputBar) return;
+
+    if (!isGroupRoom(currentRoom)) {
+      inputBar.classList.remove("force-input-locked");
+      return;
+    }
+
+    const grp = savedGroups[currentRoom];
+    if (!grp) return;
+
+    const isAdminOrOwner = window.isCurrentGroupOwner(currentRoom);
+
+    if (grp.onlyOwnerCanMsg && !isAdminOrOwner) {
+      lockBanner.classList.remove("hidden");
+      inputBar.classList.add("force-input-locked");
+      inputBar.style.setProperty("display", "none", "important");
+      if (lockText) {
+        lockText.textContent = `Only Group Admins can send messages in this group.`;
+      }
+      if (lockActions) {
+        lockActions.innerHTML = `<button class="glass-btn-sm" onclick="openGroupModal('manage')">Group Info</button>`;
+      }
+    } else {
+      lockBanner.classList.add("hidden");
+      inputBar.classList.remove("force-input-locked");
+      inputBar.style.setProperty("display", "flex", "important");
+    }
+  };
+
+  // Also block non-admins from transmitting messages if group is muted
+  const origTransmitV36 = window.transmitPayload;
+  window.transmitPayload = async function (payloadString) {
+    if (isGroupRoom(currentRoom)) {
+      const grp = savedGroups[currentRoom];
+      if (grp && grp.onlyOwnerCanMsg && !window.isCurrentGroupOwner(currentRoom)) {
+        window.updateGroupInputBarLockState();
+        showToast("Only Group Admins can send messages in this group!", "error");
+        return;
+      }
+    }
+    return origTransmitV36(payloadString);
+  };
+
+  // Broadcast Group Settings over both Presence AND Active Room Channel so every member syncs 100% live!
+  async function broadcastGroupStateEverywhere(grp, removedMember = null) {
+    if (!grp || !grp.id) return;
+    const payload = { group: grp, removedMember: removedMember };
+    try {
+      if (presenceChannel) {
+        await presenceChannel.send({
+          type: "broadcast",
+          event: "group-state-update",
+          payload: payload
+        });
+      }
+    } catch (e) { }
+    try {
+      if (activeSubscription && currentRoom === grp.id) {
+        await activeSubscription.send({
+          type: "broadcast",
+          event: "group-state-update",
+          payload: payload
+        });
+      }
+    } catch (e) { }
+  }
+
+  // Promote / Demote Co-Admin (Strictly Group Creator Only!)
+  window.toggleGroupMemberAdminRole = async function (uname) {
+    const clean = (uname || "").trim().toLowerCase();
+    if (!clean || !isGroupRoom(currentRoom)) return;
+
+    if (!window.isTrueGroupCreator(currentRoom)) {
+      showToast("Only the Group Creator (Owner) can make or dismiss Admins!", "error");
+      return;
+    }
+
+    const grp = savedGroups[currentRoom];
+    if (!grp) return;
+    if (!Array.isArray(grp.admins)) grp.admins = [];
+
+    const idx = grp.admins.map((a) => a.toLowerCase()).indexOf(clean);
+    if (idx !== -1) {
+      grp.admins.splice(idx, 1);
+      showToast(`Dismissed @${clean} as Group Admin`, "info");
+    } else {
+      grp.admins.push(clean);
+      showToast(`Promoted @${clean} to Group Admin!`, "success");
+    }
+
+    savedGroups[currentRoom] = grp;
+    localStorage.setItem("krypton_groups", JSON.stringify(savedGroups));
+    await broadcastGroupStateEverywhere(grp);
+    renderEnhancedGroupMembersDirectory();
+    updateHeaderStatus();
+    renderPeerList();
+  };
+
+  // Upgraded Group Member List Renderer (Shows Creator, Co-Admins, Make Admin button for Owner, & Enforces Member List Privacy!)
+  function renderEnhancedGroupMembersDirectory() {
+    const listEl = document.getElementById("group-current-members-list");
+    const countLabel = document.getElementById("group-members-count-label");
+    const sectionEl = document.getElementById("group-members-list-section");
+    if (!listEl || !sectionEl) return;
+
+    if (groupModalMode === "create") {
+      sectionEl.classList.add("hidden");
+      return;
+    }
+
+    sectionEl.classList.remove("hidden");
+    const grp = savedGroups[currentRoom];
+    if (!grp) return;
+
+    const me = (myUsername || "").toLowerCase();
+    const isCreator = window.isTrueGroupCreator(currentRoom);
+    const isAdmin = window.isCurrentGroupOwner(currentRoom);
+    const ownerUname = (grp.owner || "").toLowerCase();
+    const adminsList = Array.isArray(grp.admins) ? grp.admins.map((a) => a.toLowerCase()) : [];
+    const showMembersAllowed = grp.showMembersToAll !== false;
+
+    // Enforce "Allow Members to See Member List" privacy for regular members!
+    if (!isAdmin && !showMembersAllowed) {
+      if (countLabel) countLabel.textContent = "GROUP MEMBERS (HIDDEN BY ADMIN)";
+      listEl.innerHTML = `
+        <div style="padding: 12px; font-size: 12px; color: var(--text-dim); text-align: center;">
+          🔒 Group Admins have hidden the member list for this group.
+        </div>
+      `;
+      return;
+    }
+
+    const membersArr =
+      currentEditingGroupMembers && currentEditingGroupMembers.length > 0
+        ? currentEditingGroupMembers
+        : grp.members || [ownerUname];
+
+    if (countLabel) countLabel.textContent = `GROUP MEMBERS (${membersArr.length})`;
+    listEl.innerHTML = "";
+
+    membersArr.forEach((m) => {
+      const mLower = (m || "").toLowerCase();
+      const isMemberOwner = mLower === ownerUname;
+      const isMemberCoAdmin = !isMemberOwner && adminsList.includes(mLower);
+      const isSelf = mLower === me;
+      const avUrl = isSelf ? myAvatarData : usersAvatarCache[mLower] || "";
+
+      let roleBadgeHTML = "";
+      if (isMemberOwner) {
+        roleBadgeHTML = ' <span class="online-pill-badge" style="font-size: 9px; padding: 1px 6px;">Owner</span>';
+      } else if (isMemberCoAdmin) {
+        roleBadgeHTML = ' <span class="online-pill-badge" style="font-size: 9px; padding: 1px 6px;">Admin</span>';
+      }
+
+      // Only the True Group Creator can promote/dismiss Admins!
+      let makeAdminBtnHTML = "";
+      if (isCreator && !isMemberOwner) {
+        makeAdminBtnHTML = `
+          <button type="button" class="group-make-admin-btn ${isMemberCoAdmin ? "is-co-admin" : ""}" onclick="toggleGroupMemberAdminRole('${escapeHTML(mLower)}')">
+            ${isMemberCoAdmin ? "Dismiss Admin" : "Make Admin"}
+          </button>
+        `;
+      }
+
+      // Creator can remove anyone; Co-Admin can remove regular members (not Owner or other Co-Admins)
+      const canRemoveThisMember =
+        !isMemberOwner &&
+        !isSelf &&
+        (isCreator || (isAdmin && !isMemberCoAdmin));
+
+      const removeBtnHTML = canRemoveThisMember
+        ? `<button type="button" class="group-remove-member-btn" onclick="removeMemberFromCurrentGroup('${escapeHTML(mLower)}')">Remove</button>`
+        : "";
+
+      const row = document.createElement("div");
+      row.className = "group-member-row";
+      row.innerHTML = `
+        <div class="group-member-left" style="cursor: pointer;" onclick="if('${escapeHTML(mLower)}' !== '${escapeHTML(me)}') openUserActionModal('${escapeHTML(mLower)}')">
+          <div class="avatar sm" id="grp-mem-av-${escapeHTML(mLower)}" style="width: 30px; height: 30px; font-size: 11px;"></div>
+          <span class="group-member-name">
+            @${escapeHTML(mLower)}
+            ${isSelf ? ' <span style="color: var(--accent-primary); font-size: 10.5px;">(You)</span>' : ""}
+            ${roleBadgeHTML}
+          </span>
+        </div>
+        <div class="group-member-actions-wrap">
+          ${makeAdminBtnHTML}
+          ${removeBtnHTML}
+        </div>
+      `;
+      listEl.appendChild(row);
+      renderAvatarElement(row.querySelector(`#grp-mem-av-${mLower}`), mLower, avUrl);
+    });
+  }
+
+  // Hook openGroupModal so it renders our enhanced member directory with Co-Admin controls
+  const origOpenGroupModalV36 = window.openGroupModal;
+  window.openGroupModal = function (mode = "create") {
+    origOpenGroupModalV36(mode);
+    renderEnhancedGroupMembersDirectory();
+  };
+
+  // Ensure saving group settings preserves `grp.admins` and broadcasts to both room & presence!
+  const btnConfirmGrp = document.getElementById("btn-confirm-group-modal");
+  if (btnConfirmGrp) {
+    btnConfirmGrp.addEventListener("click", () => {
+      setTimeout(() => {
+        if (isGroupRoom(currentRoom) && savedGroups[currentRoom]) {
+          window.updateGroupInputBarLockState();
+          broadcastGroupStateEverywhere(savedGroups[currentRoom]);
+        }
+      }, 120);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // 3. COLORFUL "Online • Active" IN CHAT HEADER & PRIVACY-AWARE GROUP HEADER
+  // -----------------------------------------------------------------------
+  const origUpdateHeaderStatusV36 = window.updateHeaderStatus;
+  window.updateHeaderStatus = function () {
+    origUpdateHeaderStatusV36();
+    const subtitleEl = document.getElementById("current-room-subtitle");
+    if (!subtitleEl) return;
+
+    if (isGroupRoom(currentRoom)) {
+      const grp = savedGroups[currentRoom];
+      if (grp) {
+        const isAdmin = window.isCurrentGroupOwner(currentRoom);
+        const canSeeMembers = isAdmin || grp.showMembersToAll !== false;
+        const modeTag = grp.onlyOwnerCanMsg ? " • Admins Only" : "";
+        subtitleEl.classList.remove("peer-online-colorful");
+        if (canSeeMembers) {
+          subtitleEl.textContent = `${(grp.members || []).length} members • Admin: @${grp.owner}${modeTag}`;
+        } else {
+          subtitleEl.textContent = `Admin: @${grp.owner} • ${grp.bio || "Encrypted Group"}${modeTag}`;
+        }
+      }
+      window.updateGroupInputBarLockState();
+      return;
+    }
+
+    if (currentRoom && currentRoom !== "global" && !isSelfRoom(currentRoom) && currentPeerUser) {
+      const isOnline =
+        onlineUsersList &&
+        onlineUsersList.has(currentPeerUser.toLowerCase()) &&
+        userSettings.onlinePresence;
+      if (isOnline) {
+        subtitleEl.textContent = "Online • Active";
+        subtitleEl.classList.add("peer-online-colorful");
+      } else {
+        subtitleEl.textContent = "Offline • AES-256 Encrypted";
+        subtitleEl.classList.remove("peer-online-colorful");
+      }
+    } else {
+      subtitleEl.classList.remove("peer-online-colorful");
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // 4. WHATSAPP CALL ENGINE FIXES:
+  //    - 25s LIMITED RING TIMER ON BOTH CALLER & RECEIVER
+  //    - CALLER HANGUP BEFORE ANSWER IMMEDIATELY STOPS RECEIVER RINGING
+  //      & BLOCKS STALE "ACCEPT CALL" CONNECTION!
+  //    - IN-CHAT CALL LOG BUBBLES FOR COMPLETED, MISSED & CANCELLED CALLS
+  // -----------------------------------------------------------------------
+  let receiverIncomingRingTimer = null;
+  let wasCallConnectedLive = false;
+  let currentCallInitiatedByMe = false;
+
+  function formatCallDurationReadable(seconds) {
+    const s = Math.max(1, Math.floor(seconds || 0));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  function closeIncomingCallModalAndStopRing() {
+    clearTimeout(receiverIncomingRingTimer);
+    receiverIncomingRingTimer = null;
+    const callModal = document.getElementById("call-perm-modal");
+    if (callModal) callModal.classList.add("hidden");
+    activeCallSender = null;
+  }
+
+  // Upgrade createMessageNode to format Completed Call Bubbles ("CALL_LOG_DATA:voice|completed|1m 20s")
+  const prevCreateMsgNodeV36 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateMsgNodeV36(msg, rawTextOverride);
+    if (!node) return null;
+
+    const card = node.querySelector(".call-system-log-card");
+    if (card && rawTextOverride && rawTextOverride.startsWith("CALL_LOG_DATA:")) {
+      const parts = rawTextOverride.replace("CALL_LOG_DATA:", "").split("|");
+      const cType = parts[0] || "voice";
+      const cState = parts[1] || "missed";
+      const cDur = parts[2] || "";
+      const isVideo = cType === "video";
+
+      const titleEl = card.querySelector(".call-log-title");
+      const subEl = card.querySelector(".call-log-sub");
+      const iconCircle = card.querySelector(".call-log-icon-circle");
+
+      if (cState === "completed") {
+        card.classList.add("call-completed-card");
+        if (titleEl) titleEl.textContent = isVideo ? "Video Call" : "Voice Call";
+        if (subEl) subEl.textContent = `Duration: ${cDur || "Connected"}`;
+        if (iconCircle) {
+          iconCircle.innerHTML = `<i data-lucide="${isVideo ? "video" : "phone-call"}" style="width: 16px; height: 16px;"></i>`;
+          if (window.lucide) lucide.createIcons({ nodes: [iconCircle] });
+        }
+      } else if (cState === "cancelled") {
+        if (titleEl) titleEl.textContent = isVideo ? "Missed Video Call" : "Missed Voice Call";
+        if (subEl) subEl.textContent = "Call ended before answer";
+      }
+    }
+    return node;
+  };
+
+  // Track when WebRTC actually connects so we know whether a call was answered or cancelled before pickup
+  const origStartWebRTCV36 = window.startWebRTC;
+  window.startWebRTC = async function (isCaller, type) {
+    currentCallInitiatedByMe = Boolean(isCaller);
+    wasCallConnectedLive = false;
+    await origStartWebRTCV36(isCaller, type);
+
+    if (peerConnection) {
+      const prevOnTrack = peerConnection.ontrack;
+      peerConnection.ontrack = (event) => {
+        wasCallConnectedLive = true;
+        if (prevOnTrack) prevOnTrack(event);
+      };
+    }
+  };
+
+  // Override endCall so:
+  // 1. If caller hangs up BEFORE receiver answers -> sends `call_cancelled` to immediately close receiver's ring modal
+  //    AND posts a Call Log bubble in chat!
+  // 2. If call WAS connected -> posts a Completed Call bubble with exact call duration in chat!
+  const origEndCallV36 = window.endCall;
+  window.endCall = function (notifyRemote = true) {
+    const overlay = document.getElementById("call-screen-overlay");
+    const wasOverlayOpen = Boolean(overlay && !overlay.classList.contains("hidden"));
+    const targetPeer = (currentPeerUser || activeCallSender || "").toLowerCase();
+    const callMode = activeCallType || "voice";
+    const durationSecs = callStartTime ? Math.floor((Date.now() - callStartTime) / 1000) : 0;
+    const hadConnected = Boolean(wasCallConnectedLive && durationSecs > 0);
+    const wasRingingOutgoing = Boolean(wasOverlayOpen && !peerConnection && !wasCallConnectedLive);
+
+    wasCallConnectedLive = false;
+    callStartTime = 0;
+    closeIncomingCallModalAndStopRing();
+
+    origEndCallV36(notifyRemote);
+
+    if (notifyRemote && targetPeer) {
+      // Broadcast immediate call-cancelled signal on BOTH Presence & Room channels so receiver's ring stops in 0ms!
+      try {
+        if (presenceChannel) {
+          presenceChannel.send({
+            type: "broadcast",
+            event: "call-cancelled-now",
+            payload: { caller: (myUsername || "").toLowerCase(), target: targetPeer }
+          });
+        }
+      } catch (e) { }
+
+      // Post WhatsApp-style Call Bubble inside the chat
+      if (hadConnected) {
+        const durStr = formatCallDurationReadable(durationSecs);
+        transmitPayload(`CALL_LOG_DATA:${callMode}|completed|${durStr}`);
+      } else if (wasRingingOutgoing) {
+        transmitPayload(`CALL_LOG_DATA:${callMode}|cancelled`);
+      }
+    }
+  };
+
+  // Guard #btn-accept-call: Verify the caller has NOT hung up before connecting WebRTC!
+  const btnAcceptCallEl = document.getElementById("btn-accept-call");
+  if (btnAcceptCallEl) {
+    const cleanAcceptBtn = btnAcceptCallEl.cloneNode(true);
+    btnAcceptCallEl.parentNode.replaceChild(cleanAcceptBtn, btnAcceptCallEl);
+
+    cleanAcceptBtn.addEventListener("click", async () => {
+      const caller = (activeCallSender || "").toLowerCase();
+      closeIncomingCallModalAndStopRing();
+      if (!caller || !supabaseClient) return;
+
+      // Check latest DB status first—if caller already cancelled/ended the call, do NOT connect!
+      try {
+        const { data: reqRows } = await supabaseClient
+          .from("chat_requests")
+          .select("status")
+          .or(
+            `and(sender_id.ilike.${caller},receiver_id.ilike.${myUsername}),` +
+            `and(sender_id.ilike.${myUsername},receiver_id.ilike.${caller})`
+          );
+
+        const latestStatus = reqRows && reqRows[0] ? reqRows[0].status || "" : "";
+        if (!latestStatus.startsWith("call_ring_")) {
+          showToast(`Call from @${caller} has already ended.`, "info");
+          return;
+        }
+      } catch (e) { }
+
+      activeCallSender = caller;
+      const targetRoom = await getSecureRoomId(caller);
+      if (currentRoom !== targetRoom) {
+        await joinRoom(targetRoom, "@" + caller);
+      }
+
+      const activeState = `call_active_${activeCallType}:${caller}`;
+      await supabaseClient
+        .from("chat_requests")
+        .update({ status: activeState })
+        .or(
+          `and(sender_id.ilike.${caller},receiver_id.ilike.${myUsername}),` +
+          `and(sender_id.ilike.${myUsername},receiver_id.ilike.${caller})`
+        );
+      startWebRTC(false, activeCallType);
+    });
+  }
+
+  // Upgrade handleCallRequestCheck:
+  // - If status becomes `accepted` while `#call-perm-modal` (Incoming Call) is open -> Caller hung up! Close modal immediately!
+  // - Auto-dismiss incoming call ring after 25 seconds (WhatsApp ring limit)
+  const prevHandleCallReqV36 = window.handleCallRequestCheck;
+  window.handleCallRequestCheck = async function (payload) {
+    const row = payload ? payload.new : null;
+    if (!row || !myUsername) return;
+
+    const me = myUsername.toLowerCase();
+    const s = (row.sender_id || "").toLowerCase();
+    const rec = (row.receiver_id || "").toLowerCase();
+    if (s !== me && rec !== me) return;
+
+    // If caller cancelled the call (`status === "accepted"` while incoming call popup is open) -> Stop ringing immediately!
+    const callModal = document.getElementById("call-perm-modal");
+    if (
+      row.status === "accepted" &&
+      callModal &&
+      !callModal.classList.contains("hidden")
+    ) {
+      closeIncomingCallModalAndStopRing();
+      showToast("Missed call (Caller ended the call).", "info");
+      return;
+    }
+
+    await prevHandleCallReqV36(payload);
+
+    // If incoming call modal just opened, start a 25-second max ring timer on receiver side too
+    if (callModal && !callModal.classList.contains("hidden")) {
+      clearTimeout(receiverIncomingRingTimer);
+      receiverIncomingRingTimer = setTimeout(() => {
+        closeIncomingCallModalAndStopRing();
+        showToast("Missed call (Ringing timed out).", "info");
+      }, 25000);
+    }
+  };
+
+  // Listen for instant `call-cancelled-now` broadcast on Presence Channel & Room Channel
+  const prevInitPresenceV36 = window.initPresenceTracker;
+  window.initPresenceTracker = function () {
+    if (typeof prevInitPresenceV36 === "function") prevInitPresenceV36();
+    if (!presenceChannel) return;
+
+    presenceChannel.on("broadcast", { event: "call-cancelled-now" }, (eventObj) => {
+      const p = eventObj.payload;
+      const me = (myUsername || "").toLowerCase();
+      if (p && p.target === me) {
+        closeIncomingCallModalAndStopRing();
+        if (peerConnection) {
+          origEndCallV36(false);
+        }
+        showToast(`Call ended by @${p.caller}`, "info");
+      }
+    });
+  };
+
+  // Also listen for `group-state-update` on the active room channel so group mute & privacy apply in 0ms!
+  const prevJoinRoomV36 = window.joinRoom;
+  window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+    await prevJoinRoomV36(roomId, displayName, pushHistory);
+    window.updateHeaderStatus();
+    window.updateGroupInputBarLockState();
+
+    if (activeSubscription && isGroupRoom(roomId)) {
+      activeSubscription.on("broadcast", { event: "group-state-update" }, (payload) => {
+        const data = payload.payload;
+        if (!data || !data.group || !data.group.id) return;
+        const g = data.group;
+        const me = (myUsername || "").toLowerCase();
+
+        if (data.removedMember === me) {
+          delete savedGroups[g.id];
+          localStorage.setItem("krypton_groups", JSON.stringify(savedGroups));
+          if (currentRoom === g.id) exitChatToDashboard();
+          renderPeerList();
+          showToast(`You were removed from group "${g.name}"`, "error");
+          return;
+        }
+
+        savedGroups[g.id] = g;
+        localStorage.setItem("krypton_groups", JSON.stringify(savedGroups));
+        renderPeerList();
+        if (currentRoom === g.id) {
+          window.updateHeaderStatus();
+          window.updateGroupInputBarLockState();
+          renderEnhancedGroupMembersDirectory();
+        }
+      });
+    }
   };
 })();
