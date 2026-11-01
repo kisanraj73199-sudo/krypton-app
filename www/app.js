@@ -16824,3 +16824,339 @@ initIdentity();
   document.addEventListener("DOMContentLoaded", bindEmojiCategorySwipeGesture);
   setTimeout(bindEmojiCategorySwipeGesture, 450);
 })();
+// =========================================================================
+// 29. FEATURE v30000 (5-POINT PRECISION FIX):
+//     1. SEARCH BAR: ONLY SHOW TYPING-MATCHED USERS (NO EMPTY GLOBAL DIRECTORY)
+//     2. ELIMINATE KEYBOARD OPEN FLASH (KILL VISUALVIEWPORT HEIGHT THRASHING)
+//     3. EMOJI ICON: 100% RELIABLE CLICK-TO-OPEN & CLICK-TO-CLOSE TOGGLE
+//     4. NEUTRAL MONOCHROME EMOJI BUTTON IN TYPING BAR
+//     5. 0ms INSTANT USER PROFILE DASHBOARD OPEN FROM ANYWHERE IN CHATS
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. KILL KEYBOARD OPEN FLASH (DISABLE VISUALVIEWPORT HEIGHT THRASHING)
+  // -----------------------------------------------------------------------
+  function disableViewportFlashJitter() {
+    const appLayout = document.querySelector(".app-layout");
+    if (!appLayout) return;
+
+    // Remove any inline pixel height set by older visualViewport resize listeners
+    appLayout.style.removeProperty("height");
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener(
+        "resize",
+        (e) => {
+          // Stop older resize listeners from forcing inline px height & causing a theme-colored flash
+          e.stopImmediatePropagation();
+          appLayout.style.removeProperty("height");
+        },
+        true
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // 2. MAIN SEARCH BAR (#peer-id-input): ONLY SHOW MATCHING USERS WHEN TYPING
+  // -----------------------------------------------------------------------
+  function fixMainUserSearchBarSuggestions() {
+    const peerInput = document.getElementById("peer-id-input");
+    const dropdown = document.getElementById("user-search-dropdown");
+    if (!peerInput || !dropdown || peerInput.dataset.v30SearchFixed) return;
+    peerInput.dataset.v30SearchFixed = "true";
+
+    // Intercept focus in capture phase so clicking the empty search bar NEVER opens Global Directory
+    peerInput.addEventListener(
+      "focus",
+      (e) => {
+        const val = peerInput.value.trim().replace(/^@/, "");
+        if (!val) {
+          e.stopImmediatePropagation();
+          dropdown.classList.add("hidden");
+          dropdown.innerHTML = "";
+        }
+      },
+      true
+    );
+
+    // Intercept input in capture phase: hide immediately if empty, otherwise show ONLY matching users
+    let searchDebounceTimer = null;
+    peerInput.addEventListener(
+      "input",
+      (e) => {
+        e.stopImmediatePropagation();
+        const rawVal = peerInput.value.trim().replace(/^@/, "").toLowerCase();
+
+        // Filter local sidebar chats as usual
+        if (typeof filterSidebarItems === "function") {
+          filterSidebarItems(rawVal);
+        }
+
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+        if (!rawVal) {
+          dropdown.classList.add("hidden");
+          dropdown.innerHTML = "";
+          return;
+        }
+
+        searchDebounceTimer = setTimeout(async () => {
+          if (!supabaseClient) return;
+          const currentVal = peerInput.value.trim().replace(/^@/, "").toLowerCase();
+          if (!currentVal) {
+            dropdown.classList.add("hidden");
+            dropdown.innerHTML = "";
+            return;
+          }
+
+          try {
+            const { data, error } = await supabaseClient
+              .from("users")
+              .select("username, avatar_url, bio")
+              .ilike("username", `%${currentVal}%`)
+              .limit(12);
+
+            if (error || !data) return;
+
+            const myLower = (myUsername || "").toLowerCase();
+            // Strictly filter users whose username matches the typed letters
+            const matchedUsers = data.filter(
+              (u) =>
+                u.username &&
+                u.username.toLowerCase() !== myLower &&
+                u.username.toLowerCase().includes(currentVal)
+            );
+
+            if (matchedUsers.length === 0) {
+              dropdown.innerHTML = `<div class="search-empty">No matching user found for "@${escapeHTML(currentVal)}"</div>`;
+              dropdown.classList.remove("hidden");
+              return;
+            }
+
+            dropdown.innerHTML = "";
+            matchedUsers.forEach((u) => {
+              const uname = u.username.toLowerCase();
+              if (u.avatar_url) usersAvatarCache[uname] = u.avatar_url;
+              if (typeof u.bio === "string") usersBioCache[uname] = u.bio;
+
+              const isOnline = Boolean(onlineUsersList && onlineUsersList.has(uname));
+              const item = document.createElement("div");
+              item.className = "search-item";
+              item.innerHTML = `
+                <div class="search-item-left">
+                  <div class="avatar-circle sm" id="search-av-${escapeHTML(uname)}">${escapeHTML(uname.charAt(0).toUpperCase())}</div>
+                  <div>
+                    <div class="search-item-name">@${escapeHTML(uname)}</div>
+                    <div class="search-item-sub">${isOnline ? "🟢 Online" : "Offline"}</div>
+                  </div>
+                </div>
+                <span class="search-connect-tag">Chat</span>
+              `;
+
+              const avEl = item.querySelector(`#search-av-${uname}`);
+              if (avEl && typeof renderAvatarElement === "function") {
+                renderAvatarElement(avEl, uname, u.avatar_url || usersAvatarCache[uname]);
+              }
+
+              item.addEventListener("click", () => {
+                dropdown.classList.add("hidden");
+                peerInput.value = "";
+                if (typeof filterSidebarItems === "function") filterSidebarItems("");
+                if (typeof startPrivateChatWith === "function") startPrivateChatWith(uname);
+              });
+
+              dropdown.appendChild(item);
+            });
+
+            dropdown.classList.remove("hidden");
+          } catch (err) { }
+        }, 140);
+      },
+      true
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // 3. FIX EMOJI ICON TOGGLE (CLICK TO OPEN, CLICK AGAIN TO CLOSE 100%)
+  // -----------------------------------------------------------------------
+  function fixEmojiDrawerToggleButton() {
+    const emojiPal = document.getElementById("emoji-palette");
+    const btnEmojiLeft = document.getElementById("btn-tg-emoji-left");
+    if (!emojiPal || !btnEmojiLeft || btnEmojiLeft.dataset.v30EmojiFixed) return;
+    btnEmojiLeft.dataset.v30EmojiFixed = "true";
+
+    let wasOpenOnPointerDown = false;
+
+    // Record exact state on pointerdown BEFORE any global document click/pointer listener can touch it
+    btnEmojiLeft.addEventListener(
+      "pointerdown",
+      (e) => {
+        wasOpenOnPointerDown = !emojiPal.classList.contains("hidden");
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      },
+      true
+    );
+
+    btnEmojiLeft.addEventListener(
+      "click",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const attachMenu = document.getElementById("attach-hub-menu");
+        const btnAttach = document.getElementById("btn-attach-hub");
+        if (attachMenu) attachMenu.classList.add("hidden");
+        if (btnAttach) btnAttach.classList.remove("active");
+
+        if (wasOpenOnPointerDown) {
+          // It was open when user tapped the emoji icon -> CLOSE IT!
+          emojiPal.classList.add("hidden");
+          btnEmojiLeft.classList.remove("active");
+        } else {
+          // It was closed when user tapped the emoji icon -> OPEN IT!
+          if (typeof renderWhatsAppEmojiGrid === "function") renderWhatsAppEmojiGrid();
+          emojiPal.classList.remove("hidden");
+          btnEmojiLeft.classList.remove("active"); // Keep icon neutral without theme color
+        }
+      },
+      true
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // 4. 0ms INSTANT USER PROFILE DASHBOARD OPEN FROM ANYWHERE IN CHATS
+  // -----------------------------------------------------------------------
+  function openUserProfileModalZeroLatency(rawUsername) {
+    const clean = String(rawUsername || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, "");
+    if (!clean || clean === (myUsername || "").toLowerCase()) return;
+
+    const userActionModal = document.getElementById("user-action-modal");
+    const actionUserTitle = document.getElementById("action-user-title");
+    const actionUserAvatar = document.getElementById("action-user-avatar");
+    const actionUserStatusPill = document.getElementById("action-user-status-pill");
+    const actionUserBioBox = document.getElementById("action-user-bio-box");
+    const btnActionBlock = document.getElementById("btn-action-block");
+    if (!userActionModal) return;
+
+    // Update global selectedActionUser so Chat / Voice Call / Video Call / Block buttons inside modal work
+    try {
+      selectedActionUser = clean;
+    } catch (e) { }
+
+    // 1. Populate UI synchronously from local memory (0ms!)
+    if (actionUserTitle) actionUserTitle.textContent = `@${clean}`;
+
+    const isOnline = Boolean(onlineUsersList && onlineUsersList.has(clean));
+    if (actionUserStatusPill) {
+      actionUserStatusPill.textContent = isOnline ? "● Online Now" : "Offline";
+      actionUserStatusPill.className = "status-pill " + (isOnline ? "online" : "offline");
+    }
+
+    if (btnActionBlock && typeof blockedUsers !== "undefined") {
+      const isBlocked = blockedUsers.has(clean);
+      btnActionBlock.innerHTML = isBlocked
+        ? `<i data-lucide="user-check" style="width:16px;height:16px;"></i> Unblock User`
+        : `<i data-lucide="ban" style="width:16px;height:16px;"></i> Block User`;
+    }
+
+    if (actionUserAvatar && typeof renderAvatarElement === "function") {
+      renderAvatarElement(actionUserAvatar, clean, usersAvatarCache[clean] || null);
+    }
+
+    const cachedBio = usersBioCache && usersBioCache[clean];
+    if (actionUserBioBox) {
+      actionUserBioBox.textContent =
+        cachedBio && cachedBio.trim()
+          ? `"${cachedBio.trim()}"`
+          : "Hey there! I am using Krypton.";
+    }
+
+    // 2. Show Modal IMMEDIATELY on the very same tap frame (0ms delay!)
+    userActionModal.classList.remove("hidden");
+    if (window.lucide) lucide.createIcons({ nodes: [userActionModal] });
+
+    // 3. Silently refresh Avatar & Bio from Supabase in background without blocking UI
+    if (supabaseClient) {
+      supabaseClient
+        .from("users")
+        .select("username, avatar_url, bio")
+        .ilike("username", clean)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data) return;
+          const uname = data.username.toLowerCase();
+          if (data.avatar_url) usersAvatarCache[uname] = data.avatar_url;
+          if (typeof data.bio === "string") usersBioCache[uname] = data.bio;
+
+          if (actionUserTitle && actionUserTitle.textContent.toLowerCase() === "@" + uname) {
+            if (actionUserAvatar && data.avatar_url && typeof renderAvatarElement === "function") {
+              renderAvatarElement(actionUserAvatar, uname, data.avatar_url);
+            }
+            if (actionUserBioBox) {
+              actionUserBioBox.textContent =
+                data.bio && data.bio.trim()
+                  ? `"${data.bio.trim()}"`
+                  : "Hey there! I am using Krypton.";
+            }
+          }
+        })
+        .catch(() => { });
+    }
+  }
+
+  // Override global openUserActionModal
+  window.openUserActionModal = openUserProfileModalZeroLatency;
+
+  // Intercept clicks on Chat Header username, Message Sender names, Avatars & 3-Dot "View Profile" in Capture Phase!
+  document.addEventListener(
+    "click",
+    (e) => {
+      const target = e.target;
+      if (!target) return;
+
+      // Case A: Clicked Chat Header Identity (#header-identity-click) in a 1-on-1 DM room
+      const headerIdBox = target.closest("#header-identity-click");
+      if (headerIdBox && currentRoom && typeof isPrivateRoom === "function" && isPrivateRoom(currentRoom)) {
+        const peer = typeof getPeerFromRoomId === "function" ? getPeerFromRoomId(currentRoom) : "";
+        if (peer) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          openUserProfileModalZeroLatency(peer);
+          return;
+        }
+      }
+
+      // Case B: Clicked a sender username (.sender-Click) or avatar inside chat messages
+      const senderClickEl = target.closest(".sender-Click");
+      if (senderClickEl) {
+        const uname =
+          senderClickEl.dataset.user ||
+          senderClickEl.textContent.trim().replace(/^@/, "");
+        if (uname && uname.toLowerCase() !== (myUsername || "").toLowerCase()) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          openUserProfileModalZeroLatency(uname);
+          return;
+        }
+      }
+    },
+    true
+  );
+
+  function initV30000Fixes() {
+    disableViewportFlashJitter();
+    fixMainUserSearchBarSuggestions();
+    fixEmojiDrawerToggleButton();
+  }
+
+  document.addEventListener("DOMContentLoaded", initV30000Fixes);
+  setTimeout(initV30000Fixes, 350);
+})();

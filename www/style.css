@@ -7105,3 +7105,55 @@ body:not(.dark-theme) .krypton-poll-opt-btn {
     transform: translateX(0);
   }
 }
+
+/* =========================================================
+   v30000 MASTER FIXES:
+   1. STOP KEYBOARD RESIZE FLASH (LOCK VIEWPORT LAYOUT)
+   2. KEEP CHAT INPUT EMOJI ICON NEUTRAL (NO THEME COLOR FILL)
+   3. HIDE "GLOBAL DIRECTORY" HEADER IN SEARCH SUGGESTIONS
+   ========================================================= */
+
+/* 1. Prevent visualViewport JS height jitter & theme flash when keyboard opens */
+html,
+body,
+.app-layout {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+.chat-screen,
+.sidebar,
+.message-feed {
+  transition: none !important;
+}
+
+/* 2. Keep Emoji Icon inside Chat Input Bar Neutral / Monochrome (No Theme Color!) */
+#btn-tg-emoji-left,
+#btn-tg-emoji-left:hover,
+#btn-tg-emoji-left:focus,
+#btn-tg-emoji-left:active,
+#btn-tg-emoji-left.active,
+.chat-input-pill #btn-emoji-picker,
+.chat-input-pill #btn-emoji-picker.active {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--text-muted) !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+#btn-tg-emoji-left svg,
+#btn-tg-emoji-left i {
+  color: var(--text-muted) !important;
+  stroke: currentColor !important;
+}
+
+/* 3. Hide "GLOBAL DIRECTORY" label inside username search dropdown */
+#user-search-dropdown .search-dropdown-header {
+  display: none !important;
+}
