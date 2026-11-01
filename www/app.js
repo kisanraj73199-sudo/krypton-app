@@ -18701,3 +18701,181 @@ initIdentity();
     obs.observe(document.body, { childList: true, subtree: true });
   }
 })();
+// =========================================================================
+// 37. FEATURE v39000 (4-POINT PRECISION FIX):
+//     1. FIX SETTINGS GOING BLANK AFTER CLOSING WEB QR SCANNER (PIC 1000121417)
+//     2. SHOW "25s Ring • Tap to call back" ON UNANSWERED CALL BUBBLES
+//     3. BLOCK "EDIT MESSAGE" & "COPY TEXT" ON CALL LOG & POLL BUBBLES
+//     4. NATIVE ANDROID WEBVIEW BACKGROUND SYNC TO STOP KEYBOARD GREY BAR
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. FIX SETTINGS SCREEN GOING BLACK/BLANK WHEN OPENING OR CLOSING QR SCANNER
+  // -----------------------------------------------------------------------
+  const origOpenQrScannerV39 = window.openKryptonQrScannerModal;
+  window.openKryptonQrScannerModal = async function () {
+    const settingsModal = document.getElementById("settings-modal");
+    const wasSettingsVisible =
+      settingsModal &&
+      (!settingsModal.classList.contains("hidden") ||
+        settingsModal.classList.contains("inline-sidebar-settings"));
+
+    if (typeof origOpenQrScannerV39 === "function") {
+      await origOpenQrScannerV39();
+    }
+
+    // Restore inline #settings-modal immediately so line 15836's `.add("hidden")` never blanks out Settings!
+    if (settingsModal && (wasSettingsVisible || currentSidebarViewMode === "settings")) {
+      settingsModal.classList.remove("hidden");
+    }
+  };
+
+  function bindQrCloseRestoreSettings() {
+    const closeQrBtn = document.getElementById("btn-close-qr-scanner");
+    const qrModal = document.getElementById("krypton-qr-scanner-modal");
+
+    function ensureSettingsRestoredIfActive() {
+      const settingsBtnDock = document.getElementById("dock-btn-settings");
+      const settingsModal = document.getElementById("settings-modal");
+      const isSettingsTabActive =
+        (typeof currentSidebarViewMode !== "undefined" && currentSidebarViewMode === "settings") ||
+        (settingsBtnDock && settingsBtnDock.classList.contains("active"));
+
+      if (isSettingsTabActive && settingsModal) {
+        settingsModal.classList.remove("hidden");
+      }
+    }
+
+    if (closeQrBtn && !closeQrBtn.dataset.v39Restored) {
+      closeQrBtn.dataset.v39Restored = "true";
+      closeQrBtn.addEventListener("click", () => {
+        setTimeout(ensureSettingsRestoredIfActive, 20);
+      });
+    }
+    if (qrModal && !qrModal.dataset.v39Restored) {
+      qrModal.dataset.v39Restored = "true";
+      qrModal.addEventListener("click", (e) => {
+        if (e.target && e.target.id === "krypton-qr-scanner-modal") {
+          setTimeout(ensureSettingsRestoredIfActive, 20);
+        }
+      });
+    }
+  }
+
+  bindQrCloseRestoreSettings();
+  setTimeout(bindQrCloseRestoreSettings, 500);
+
+  // -----------------------------------------------------------------------
+  // 2. SHOW "25s Ring" ON UNANSWERED / TIMEOUT CALL BUBBLES & MARK AS CALL_LOG
+  // -----------------------------------------------------------------------
+  function applyCallBubble25sRingAndLockEdit(node) {
+    if (!node) return;
+    const card = node.querySelector(".call-system-log-card");
+    const pollCard = node.querySelector(".krypton-poll-card");
+
+    if (pollCard) {
+      node.dataset.msgType = "poll";
+    }
+
+    if (!card) return;
+    // Mark msgType as "call_log" so Long-Press Menu NEVER shows "Edit Message" or "Copy Text"!
+    node.dataset.msgType = "call_log";
+
+    const titleEl = card.querySelector(".call-log-title");
+    const subEl = card.querySelector(".call-log-sub");
+    const titleTxt = titleEl ? titleEl.textContent.trim() : "";
+    const subTxt = subEl ? subEl.textContent.trim() : "";
+    const isVideo = titleTxt.toLowerCase().includes("video");
+    const isSentByMe = node.classList.contains("sent");
+
+    // Detect if this call timed out after full 25s ringing ("Unanswered" or "30s timeout" or "25s")
+    const isFullRingTimeout =
+      titleTxt.includes("Unanswered") ||
+      subTxt.includes("timeout") ||
+      subTxt.includes("25s") ||
+      subTxt.includes("call back");
+
+    if (isFullRingTimeout && !card.classList.contains("call-completed-card") && !titleTxt.includes("Declined") && !titleTxt.includes("Busy")) {
+      if (titleEl) {
+        titleEl.textContent = isSentByMe
+          ? isVideo
+            ? "Unanswered Video Call (25s Ring)"
+            : "Unanswered Voice Call (25s Ring)"
+          : isVideo
+            ? "Missed Video Call (25s Ring)"
+            : "Missed Voice Call (25s Ring)";
+      }
+      if (subEl) {
+        subEl.textContent = `Rung for 25s • Tap to ${isVideo ? "video" : "voice"} call back`;
+      }
+    }
+  }
+
+  // Hook createMessageNode so every Call & Poll bubble gets tagged and formatted
+  const prevCreateMsgNodeV39 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateMsgNodeV39(msg, rawTextOverride);
+    if (node) {
+      applyCallBubble25sRingAndLockEdit(node);
+    }
+    return node;
+  };
+
+  // Also upgrade any existing bubbles in the chat feed
+  document.querySelectorAll("#message-container .message-row").forEach(applyCallBubble25sRingAndLockEdit);
+
+  // -----------------------------------------------------------------------
+  // 3. BLOCK "EDIT MESSAGE" & "COPY TEXT" ON CALL BUBBLES & POLLS IN CONTEXT MENU
+  // -----------------------------------------------------------------------
+  const prevOpenCtxMenuV39 = window.openWhatsAppMessageContextMenu;
+  window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
+    const cleanId = String(msgId || "").replace("msg-row-", "");
+    const row = document.getElementById("msg-row-" + cleanId);
+
+    // Ensure Call Log or Poll row has non-text msgType BEFORE context menu builds its buttons!
+    if (row) {
+      if (row.querySelector(".call-system-log-card")) {
+        row.dataset.msgType = "call_log";
+      } else if (row.querySelector(".krypton-poll-card")) {
+        row.dataset.msgType = "poll";
+      }
+    }
+
+    if (typeof prevOpenCtxMenuV39 === "function") {
+      prevOpenCtxMenuV39(msgId, clientX, clientY);
+    }
+
+    // Extra safety: remove Edit & Copy buttons if row is a Call Log or Poll
+    if (row && (row.dataset.msgType === "call_log" || row.dataset.msgType === "poll")) {
+      const menu = document.querySelector(".whatsapp-msg-context-menu");
+      if (menu) {
+        menu.querySelectorAll(".msg-ctx-btn").forEach((btn) => {
+          const txt = (btn.textContent || "").trim();
+          if (txt.includes("Edit Message") || txt.includes("Copy Text")) {
+            btn.remove();
+          }
+        });
+      }
+    }
+  };
+
+  // Guard startEditingMessage so a Call Log or Poll can NEVER enter edit mode
+  const prevStartEditingV39 = window.startEditingMessage;
+  if (typeof prevStartEditingV39 === "function") {
+    window.startEditingMessage = function (msgId, currentText) {
+      const cleanId = String(msgId || "").replace("msg-row-", "");
+      const row = document.getElementById("msg-row-" + cleanId);
+      if (
+        row &&
+        (row.dataset.msgType === "call_log" ||
+          row.dataset.msgType === "poll" ||
+          row.querySelector(".call-system-log-card") ||
+          row.querySelector(".krypton-poll-card"))
+      ) {
+        return;
+      }
+      return prevStartEditingV39(msgId, currentText);
+    };
+  }
+})();

@@ -7411,3 +7411,40 @@ body:not(.dark-theme) {
   transform: translateZ(0) !important;
   -webkit-transform: translateZ(0) !important;
 }
+
+/* =========================================================
+   v39000: FIX ANDROID KEYBOARD GREY BAR GLITCH & QR SETTINGS
+   ========================================================= */
+
+/* 1. CRITICAL: Remove `background-attachment: fixed` which causes Android WebView
+      to flash a grey/black bar above the keyboard during adjustResize! */
+html,
+body,
+.app-layout,
+.sidebar,
+.chat-screen,
+.message-feed {
+  background-attachment: scroll !important;
+  background-color: #06080f !important;
+}
+
+body:not(.dark-theme),
+html:has(body:not(.dark-theme)),
+body:not(.dark-theme) .app-layout,
+body:not(.dark-theme) .sidebar,
+body:not(.dark-theme) .chat-screen,
+body:not(.dark-theme) .message-feed {
+  background-attachment: scroll !important;
+  background-color: #f1f5f9 !important;
+}
+
+/* 2. Anchor input bar & bottom dock cleanly without transform-layer repaint delay */
+.app-layout,
+.chat-screen,
+.sidebar,
+.input-bar,
+.tg-unified-input-bar {
+  transform: none !important;
+  -webkit-transform: none !important;
+  transition: none !important;
+}

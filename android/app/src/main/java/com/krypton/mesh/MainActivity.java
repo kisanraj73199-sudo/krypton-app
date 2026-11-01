@@ -96,10 +96,17 @@ public class MainActivity extends BridgeActivity {
             }
         );
 
-        super.onCreate(savedInstanceState);
+     super.onCreate(savedInstanceState);
 
-        // Prevent White Screen Flash when Android Keyboard Opens or Closes!
-        getWindow().getDecorView().setBackgroundColor(Color.parseColor("#06080F"));
+        // Prevent White / Grey Screen Flash when Android Keyboard Opens or Closes!
+        int obsidianBg = Color.parseColor("#06080F");
+        getWindow().getDecorView().setBackgroundColor(obsidianBg);
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(obsidianBg));
+        getWindow().setStatusBarColor(obsidianBg);
+        getWindow().setNavigationBarColor(obsidianBg);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
 
         createNativeNotificationChannel();
         checkAndRequestPermissions();
@@ -108,9 +115,15 @@ public class MainActivity extends BridgeActivity {
         if (this.bridge != null && this.bridge.getWebView() != null) {
             WebView webView = this.bridge.getWebView();
 
-            // Set WebView background to Obsidian Dark (#06080F) so keyboard transition never flashes white
-            webView.setBackgroundColor(Color.parseColor("#06080F"));
-
+            // Set WebView & its native Parent Container to Obsidian Dark (#06080F) so keyboard transition never flashes grey!
+            webView.setBackgroundColor(obsidianBg);
+            if (webView.getParent() instanceof android.view.View) {
+                ((android.view.View) webView.getParent()).setBackgroundColor(obsidianBg);
+            }
+            if (webView.getRootView() != null) {
+                webView.getRootView().setBackgroundColor(obsidianBg);
+            }
+            
             webView.getSettings().setJavaScriptEnabled(true);
             webView.getSettings().setDomStorageEnabled(true);
             webView.getSettings().setAllowFileAccess(true);
