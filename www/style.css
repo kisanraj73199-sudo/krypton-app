@@ -7209,3 +7209,56 @@ body:not(.dark-theme) .chat-input-pill:focus-within {
 #user-action-modal [class*="fingerprint"] {
   display: none !important;
 }
+
+/* =========================================================
+   v32000 FINAL CSS FIXES:
+   1. REMOVE THEME PERIMETER BORDER FROM .tg-input-pill-shell
+   2. KEEP #btn-tg-emoji-left & #btn-attach-hub NEUTRAL MONOCHROME
+   3. HIDE GLOBAL DIRECTORY DIVIDER & SAFETY FINGERPRINT BOX
+   ========================================================= */
+
+/* 1. Remove theme-colored perimeter border & glow on Message Typing Bar (.tg-input-pill-shell) */
+.tg-input-pill-shell,
+.tg-input-pill-shell:focus,
+.tg-input-pill-shell:focus-within,
+.tg-input-pill-shell:active {
+  border-color: var(--glass-border-subtle) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32) !important;
+  outline: none !important;
+}
+
+body:not(.dark-theme) .tg-input-pill-shell,
+body:not(.dark-theme) .tg-input-pill-shell:focus-within {
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08) !important;
+  outline: none !important;
+}
+
+/* 2. Keep Emoji & Paperclip icons inside the typing bar completely neutral (no theme color highlight) */
+#btn-tg-emoji-left,
+#btn-tg-emoji-left:hover,
+#btn-tg-emoji-left:focus,
+#btn-tg-emoji-left:active,
+#btn-tg-emoji-left.active,
+#btn-attach-hub,
+#btn-attach-hub:hover,
+#btn-attach-hub:focus,
+#btn-attach-hub:active,
+#btn-attach-hub.active {
+  color: var(--text-dim) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  transform: none !important;
+}
+
+/* 3. Permanently hide Global Directory divider & headers */
+.chat-list-section-divider,
+.live-suggestion-header {
+  display: none !important;
+}
+
+/* 4. Permanently hide Safety Fingerprint box inside User Profile Modal */
+.safety-fingerprint-box {
+  display: none !important;
+}
