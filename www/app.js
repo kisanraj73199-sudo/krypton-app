@@ -17352,3 +17352,219 @@ initIdentity();
     }
   }
 })();
+// =========================================================================
+// 32. FEATURE v34000 (100% FIX FOR SEARCH BACK GESTURE & EMOJI TOGGLE):
+//     1. PHONE BACK GESTURE CLEARS SEARCH BAR ("A") & RESTORES MAIN SCREEN
+//     2. INDEPENDENT EMOJI DRAWER STATE MACHINE (1st CLICK OPEN, 2nd CLOSE)
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. SEARCH BAR BACK GESTURE FIX (CLEAR SEARCH & RETURN TO MAIN CHATS)
+  // -----------------------------------------------------------------------
+  let searchHistoryPushed = false;
+
+  function isMainSearchActive() {
+    const inp = document.getElementById("peer-id-input");
+    if (!inp) return false;
+    return Boolean(inp.value.trim().length > 0 || document.activeElement === inp);
+  }
+
+  function clearMainSearchAndRestoreHome() {
+    const inp = document.getElementById("peer-id-input");
+    if (inp) {
+      inp.value = "";
+      inp.blur();
+    }
+    document.body.classList.remove("sidebar-keyboard-open");
+    lastUniversalSearchResults = [];
+    if (typeof hideLiveUserSuggestions === "function") hideLiveUserSuggestions();
+    if (typeof renderPeerList === "function") renderPeerList("");
+    searchHistoryPushed = false;
+  }
+
+  // Push history state when user starts typing/focusing in #peer-id-input so Android Back Gesture catches it!
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      if (e.target && e.target.id === "peer-id-input") {
+        if (!searchHistoryPushed) {
+          searchHistoryPushed = true;
+          try {
+            window.history.pushState({ kryptonSearchActive: true }, "");
+          } catch (err) { }
+        }
+      }
+    },
+    true
+  );
+
+  document.addEventListener(
+    "input",
+    (e) => {
+      if (e.target && e.target.id === "peer-id-input") {
+        const val = e.target.value.trim();
+        if (val && !searchHistoryPushed) {
+          searchHistoryPushed = true;
+          try {
+            window.history.pushState({ kryptonSearchActive: true }, "");
+          } catch (err) { }
+        }
+      }
+    },
+    true
+  );
+
+  // Catch WebView / Android Gesture Back via popstate
+  window.addEventListener(
+    "popstate",
+    (e) => {
+      const emojiPal = document.getElementById("emoji-palette");
+      if (emojiPal && !emojiPal.classList.contains("krypton-emoji-force-closed") && !emojiPal.classList.contains("hidden")) {
+        setEmojiDrawerOpenState(false);
+        return;
+      }
+
+      if (isMainSearchActive()) {
+        clearMainSearchAndRestoreHome();
+      }
+    },
+    true
+  );
+
+  // Also upgrade handleAndroidBackNavigation for Capacitor Hardware Back Button
+  const origHandleAndroidBackV34 = window.handleAndroidBackNavigation;
+  window.handleAndroidBackNavigation = function () {
+    // 1. If Emoji Drawer is open -> close it first
+    if (isEmojiDrawerOpen) {
+      setEmojiDrawerOpenState(false);
+      return true;
+    }
+
+    // 2. If View Media Hub is open -> close it first
+    const attachMenu = document.getElementById("attach-hub-menu");
+    const btnAttach = document.getElementById("btn-attach-hub");
+    if (attachMenu && !attachMenu.classList.contains("hidden")) {
+      attachMenu.classList.add("hidden");
+      if (btnAttach) btnAttach.classList.remove("active");
+      return true;
+    }
+
+    // 3. If User is on Home Screen and Search Bar has text (like "A") -> Clear Search & Restore Main Screen!
+    if (!document.body.classList.contains("mobile-chat-active") && isMainSearchActive()) {
+      clearMainSearchAndRestoreHome();
+      return true;
+    }
+
+    if (typeof origHandleAndroidBackV34 === "function") {
+      return origHandleAndroidBackV34();
+    }
+    return false;
+  };
+
+  // -----------------------------------------------------------------------
+  // 2. INDEPENDENT EMOJI DRAWER CONTROLLER (IMMUNE TO LINE 8892 BUG!)
+  // -----------------------------------------------------------------------
+  let isEmojiDrawerOpen = false;
+  let lastEmojiToggleTimestamp = 0;
+
+  function setEmojiDrawerOpenState(openNow) {
+    const emojiPal = document.getElementById("emoji-palette");
+    const attachMenu = document.getElementById("attach-hub-menu");
+    const btnAttach = document.getElementById("btn-attach-hub");
+    const btnEmoji = document.getElementById("btn-tg-emoji-left");
+    if (!emojiPal) return;
+
+    isEmojiDrawerOpen = Boolean(openNow);
+
+    if (isEmojiDrawerOpen) {
+      // Close View Media hub if open
+      if (attachMenu) attachMenu.classList.add("hidden");
+      if (btnAttach) btnAttach.classList.remove("active");
+
+      if (typeof renderWhatsAppEmojiGrid === "function") {
+        try { renderWhatsAppEmojiGrid(); } catch (err) { }
+      }
+      emojiPal.classList.remove("hidden", "krypton-emoji-force-closed");
+    } else {
+      emojiPal.classList.add("hidden", "krypton-emoji-force-closed");
+    }
+
+    if (btnEmoji) btnEmoji.classList.remove("active");
+  }
+
+  // Initialize Emoji Drawer as closed on boot
+  setTimeout(() => setEmojiDrawerOpenState(false), 100);
+
+  // Intercept pointerdown in Capture Phase BEFORE Line 8892 can run!
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const target = e.target;
+      if (!target) return;
+
+      const emojiPal = document.getElementById("emoji-palette");
+      const clickedEmojiBtn = target.closest("#btn-tg-emoji-left");
+      const clickedCloseEmojiBtn = target.closest("#btn-close-emoji-drawer");
+      const clickedInsideEmojiDrawer = emojiPal && emojiPal.contains(target);
+
+      // A. User tapped the Emoji Icon (#btn-tg-emoji-left)
+      if (clickedEmojiBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const now = Date.now();
+        if (now - lastEmojiToggleTimestamp < 220) return; // Debounce double-fire
+        lastEmojiToggleTimestamp = now;
+
+        // Toggle strictly using our independent variable!
+        setEmojiDrawerOpenState(!isEmojiDrawerOpen);
+        return;
+      }
+
+      // B. User tapped the "X" button inside Emoji Drawer
+      if (clickedCloseEmojiBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setEmojiDrawerOpenState(false);
+        return;
+      }
+
+      // C. User tapped outside the Emoji Drawer while it was open -> Close it!
+      if (isEmojiDrawerOpen && !clickedInsideEmojiDrawer) {
+        setEmojiDrawerOpenState(false);
+      }
+    },
+    true
+  );
+
+  // Block any secondary `click` event on #btn-tg-emoji-left from undoing our pointerdown toggle!
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (e.target && e.target.closest("#btn-tg-emoji-left")) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+
+  // Also close Emoji Drawer whenever View Media (#btn-attach-hub) is opened
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (e.target && e.target.closest("#btn-attach-hub")) {
+        if (isEmojiDrawerOpen) {
+          isEmojiDrawerOpen = false;
+          const emojiPal = document.getElementById("emoji-palette");
+          if (emojiPal) emojiPal.classList.add("hidden", "krypton-emoji-force-closed");
+        }
+      }
+    },
+    true
+  );
+})();

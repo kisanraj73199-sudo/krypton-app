@@ -7262,3 +7262,10 @@ body:not(.dark-theme) .tg-input-pill-shell:focus-within {
 .safety-fingerprint-box {
   display: none !important;
 }
+
+/* Force-close class for Emoji Drawer (Immune to Line 8892 pointerdown bug!) */
+#emoji-palette.krypton-emoji-force-closed {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
