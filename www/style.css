@@ -7543,3 +7543,68 @@ body:not(.dark-theme) .message-feed {
   background: rgba(244, 63, 94, 0.15) !important;
   color: var(--danger-color) !important;
 }
+
+/* =========================================================
+   v41000: TELEGRAM-STYLE BOTTOM DOCK SWIPE & HIDE IN GLOBAL CHAT
+   ========================================================= */
+
+/* 1. Strictly hide Bottom Navigation Status Bar & AI Orb whenever Global Chat or any Chat is open! */
+body.mobile-chat-active #krypton-bottom-nav,
+body.in-global-chat-room #krypton-bottom-nav,
+body.in-global-chat-room #btn-krypton-ai-orb {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Remove extra bottom padding on sidebar when dock is hidden */
+body.in-global-chat-room .krypton-clean-sidebar {
+  padding-bottom: 12px !important;
+}
+
+/* 2. Smooth Telegram-Style Tab Transition & Dock Touch Gesture Support */
+#krypton-bottom-nav {
+  touch-action: pan-y !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.krypton-dock-item .dock-icon-wrap {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease !important;
+}
+
+.krypton-dock-item.active .dock-icon-wrap {
+  transform: scale(1.06);
+}
+
+.sidebar-tab-slide-left {
+  animation: tgTabSlideFromRight 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.sidebar-tab-slide-right {
+  animation: tgTabSlideFromLeft 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes tgTabSlideFromRight {
+  0% {
+    opacity: 0.45;
+    transform: translateX(24px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tgTabSlideFromLeft {
+  0% {
+    opacity: 0.45;
+    transform: translateX(-24px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

@@ -19038,3 +19038,255 @@ initIdentity();
     }
   };
 })();
+// =========================================================================
+// 38. FEATURE v41000 (TELEGRAM-STYLE BOTTOM DOCK SWIPE GESTURE &
+//     STRICTLY HIDE BOTTOM STATUS BAR INSIDE GLOBAL CHAT):
+//     1. SWIPE LEFT/RIGHT ON BOTTOM STATUS BAR OR SIDEBAR VIEWS TO SWITCH TABS
+//     2. DRAG ACROSS BOTTOM STATUS BAR PILLS TO SCRUB TABS LIVE (TELEGRAM STYLE)
+//     3. HIDE #krypton-bottom-nav WHENEVER GLOBAL CHAT IS OPEN
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. STRICTLY HIDE BOTTOM STATUS BAR WHEN IN GLOBAL CHAT (OR ANY CHAT)
+  // -----------------------------------------------------------------------
+  function syncGlobalChatBottomBarVisibility() {
+    const isGlobalOpen = Boolean(currentRoom === "global");
+    const isAnyChatOpenOnMobile = document.body.classList.contains("mobile-chat-active");
+    const navDock = document.getElementById("krypton-bottom-nav");
+
+    document.body.classList.toggle("in-global-chat-room", isGlobalOpen);
+
+    if (navDock) {
+      if (isGlobalOpen || isAnyChatOpenOnMobile) {
+        navDock.style.setProperty("display", "none", "important");
+      } else {
+        navDock.style.setProperty("display", "grid", "important");
+      }
+    }
+  }
+
+  // Hook joinRoom & exitChatToDashboard so entering/leaving Global Chat immediately hides/restores the bottom bar
+  const prevJoinRoomV41 = window.joinRoom;
+  window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+    if (roomId === "global") {
+      document.body.classList.add("mobile-chat-active", "in-global-chat-room");
+    }
+    syncGlobalChatBottomBarVisibility();
+    await prevJoinRoomV41(roomId, displayName, pushHistory);
+    syncGlobalChatBottomBarVisibility();
+  };
+
+  const prevExitChatV41 = window.exitChatToDashboard;
+  window.exitChatToDashboard = function () {
+    document.body.classList.remove("in-global-chat-room");
+    if (typeof prevExitChatV41 === "function") {
+      prevExitChatV41();
+    }
+    if (typeof updateBottomDockActiveState === "function") {
+      updateBottomDockActiveState("chats");
+    }
+    syncGlobalChatBottomBarVisibility();
+  };
+
+  // -----------------------------------------------------------------------
+  // 2. TELEGRAM-STYLE LEFT/RIGHT SWIPE & DOCK SCRUB GESTURE CONTROLLER
+  // -----------------------------------------------------------------------
+  function getVisibleDockButtons() {
+    const dock = document.getElementById("krypton-bottom-nav");
+    if (!dock) return [];
+    // Returns buttons in exact visual DOM order: Chats -> Global -> Setting -> Profile
+    return Array.from(dock.querySelectorAll(".krypton-dock-item")).filter(
+      (btn) => btn.style.display !== "none" && !btn.classList.contains("hidden")
+    );
+  }
+
+  function getActiveDockIndex(buttons) {
+    const idx = buttons.findIndex((b) => b.classList.contains("active"));
+    return idx !== -1 ? idx : 0;
+  }
+
+  function animateSidebarViewSlide(direction) {
+    const targets = [
+      document.querySelector(".sidebar-main-view"),
+      document.getElementById("settings-modal"),
+      document.getElementById("krypton-profile-dashboard")
+    ].filter((el) => el && !el.classList.contains("hidden"));
+
+    const cls = direction > 0 ? "sidebar-tab-slide-left" : "sidebar-tab-slide-right";
+    targets.forEach((el) => {
+      el.classList.remove("sidebar-tab-slide-left", "sidebar-tab-slide-right");
+      void el.offsetWidth;
+      el.classList.add(cls);
+      setTimeout(() => {
+        el.classList.remove("sidebar-tab-slide-left", "sidebar-tab-slide-right");
+      }, 220);
+    });
+  }
+
+  function switchDockTabByStep(stepDirection) {
+    // Do not swipe tabs if a chat room (including Global Chat) is currently open on screen
+    if (
+      document.body.classList.contains("mobile-chat-active") ||
+      document.body.classList.contains("in-global-chat-room") ||
+      currentRoom === "global"
+    ) {
+      return;
+    }
+
+    const buttons = getVisibleDockButtons();
+    if (buttons.length <= 1) return;
+
+    const curIdx = getActiveDockIndex(buttons);
+    let nextIdx = curIdx + stepDirection;
+
+    // If user is swiping across main dashboard tabs (Chats <-> Setting <-> Profile),
+    // skip auto-opening Global full-screen chat on intermediate swipe unless tapped or directly on dock!
+    if (
+      buttons[nextIdx] &&
+      buttons[nextIdx].dataset.dockTab === "global" &&
+      nextIdx + stepDirection >= 0 &&
+      nextIdx + stepDirection < buttons.length
+    ) {
+      nextIdx += stepDirection;
+    }
+
+    if (nextIdx < 0 || nextIdx >= buttons.length || nextIdx === curIdx) return;
+
+    const targetBtn = buttons[nextIdx];
+    if (targetBtn) {
+      if (navigator.vibrate) {
+        try { navigator.vibrate(10); } catch (e) { }
+      }
+      targetBtn.click();
+      if (targetBtn.dataset.dockTab !== "global") {
+        animateSidebarViewSlide(stepDirection);
+      }
+      syncGlobalChatBottomBarVisibility();
+    }
+  }
+
+  function bindTelegramBottomDockAndSidebarSwipe() {
+    const dock = document.getElementById("krypton-bottom-nav");
+    const sidebar = document.getElementById("app-sidebar") || document.querySelector(".sidebar");
+
+    // A. Direct Finger Slide / Scrub OR Swipe on the Bottom Status Bar (#krypton-bottom-nav)
+    if (dock && !dock.dataset.tgDockSwipeBound) {
+      dock.dataset.tgDockSwipeBound = "true";
+      let dockStartX = 0;
+      let dockStartY = 0;
+      let lastHoveredBtn = null;
+
+      dock.addEventListener(
+        "touchstart",
+        (e) => {
+          if (e.touches.length !== 1) return;
+          dockStartX = e.touches[0].clientX;
+          dockStartY = e.touches[0].clientY;
+          lastHoveredBtn = e.target.closest(".krypton-dock-item");
+        },
+        { passive: true }
+      );
+
+      dock.addEventListener(
+        "touchmove",
+        (e) => {
+          if (e.touches.length !== 1) return;
+          const touch = e.touches[0];
+          const elUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+          const btnUnderFinger = elUnderFinger && elUnderFinger.closest(".krypton-dock-item");
+
+          // Telegram-style live pill scrub: if finger slides onto another dock tab (except Global), switch live!
+          if (
+            btnUnderFinger &&
+            btnUnderFinger !== lastHoveredBtn &&
+            btnUnderFinger.dataset.dockTab !== "global"
+          ) {
+            const buttons = getVisibleDockButtons();
+            const oldIdx = getActiveDockIndex(buttons);
+            const newIdx = buttons.indexOf(btnUnderFinger);
+            lastHoveredBtn = btnUnderFinger;
+            if (navigator.vibrate) {
+              try { navigator.vibrate(8); } catch (err) { }
+            }
+            btnUnderFinger.click();
+            if (newIdx !== -1 && oldIdx !== -1 && newIdx !== oldIdx) {
+              animateSidebarViewSlide(newIdx > oldIdx ? 1 : -1);
+            }
+          }
+        },
+        { passive: true }
+      );
+
+      dock.addEventListener(
+        "touchend",
+        (e) => {
+          if (!e.changedTouches || e.changedTouches.length !== 1) return;
+          const dx = e.changedTouches[0].clientX - dockStartX;
+          const dy = e.changedTouches[0].clientY - dockStartY;
+
+          // Quick horizontal flick on the bottom bar
+          if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+            switchDockTabByStep(dx < 0 ? 1 : -1);
+          }
+        },
+        { passive: true }
+      );
+    }
+
+    // B. Horizontal Swipe Left/Right anywhere on Sidebar Dashboard (Chats <-> Setting <-> Profile)
+    if (sidebar && !sidebar.dataset.tgSidebarSwipeBound) {
+      sidebar.dataset.tgSidebarSwipeBound = "true";
+      let sideStartX = 0;
+      let sideStartY = 0;
+      let ignoreSwipe = false;
+
+      sidebar.addEventListener(
+        "touchstart",
+        (e) => {
+          if (e.touches.length !== 1) return;
+          const target = e.target;
+          // Do not hijack swipes started directly on bottom dock, inputs, or sliders
+          if (
+            target &&
+            target.closest(
+              "#krypton-bottom-nav, input, textarea, .switch, .theme-swatches-circles-row, #btn-krypton-ai-orb"
+            )
+          ) {
+            ignoreSwipe = true;
+            return;
+          }
+          ignoreSwipe = false;
+          sideStartX = e.touches[0].clientX;
+          sideStartY = e.touches[0].clientY;
+        },
+        { passive: true }
+      );
+
+      sidebar.addEventListener(
+        "touchend",
+        (e) => {
+          if (ignoreSwipe || !e.changedTouches || e.changedTouches.length !== 1) return;
+          const dx = e.changedTouches[0].clientX - sideStartX;
+          const dy = e.changedTouches[0].clientY - sideStartY;
+
+          // Horizontal swipe (> 58px and clearly horizontal, not vertical scroll)
+          if (Math.abs(dx) > 58 && Math.abs(dx) > Math.abs(dy) * 1.55) {
+            // Swipe Left (dx < 0) -> Next Tab (+1) | Swipe Right (dx > 0) -> Previous Tab (-1)
+            switchDockTabByStep(dx < 0 ? 1 : -1);
+          }
+        },
+        { passive: true }
+      );
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bindTelegramBottomDockAndSidebarSwipe();
+    syncGlobalChatBottomBarVisibility();
+  });
+  setTimeout(() => {
+    bindTelegramBottomDockAndSidebarSwipe();
+    syncGlobalChatBottomBarVisibility();
+  }, 350);
+})();
