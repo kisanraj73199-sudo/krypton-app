@@ -17160,3 +17160,274 @@ initIdentity();
   document.addEventListener("DOMContentLoaded", initV30000Fixes);
   setTimeout(initV30000Fixes, 350);
 })();
+// =========================================================================
+// 30. FEATURE v31000 (FINAL SCREENSHOT FIXES):
+//     1. EMOJI BUTTON: DOCUMENT-LEVEL CAPTURE TOGGLE (100% CLOSES ON 2ND TAP)
+//     2. SEARCH BAR: HIDE "GLOBAL DIRECTORY" & FILTER STRICTLY BY TYPED LETTERS
+//     3. FIX USERNAME CLICK IN CHATS -> OPEN PROFILE INSTANTLY + HIDE FINGERPRINT
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. 100% BULLETPROOF EMOJI ICON TOGGLE (DOCUMENT CAPTURE PHASE)
+  // -----------------------------------------------------------------------
+  let emojiPaletteOpenStateOnDown = false;
+
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const emojiBtn = e.target && e.target.closest("#btn-tg-emoji-left, #btn-emoji-picker");
+      const emojiPal = document.getElementById("emoji-palette");
+      if (!emojiBtn || !emojiPal) return;
+
+      // Capture exact open/closed state BEFORE any other listener in app.js can run!
+      emojiPaletteOpenStateOnDown = !emojiPal.classList.contains("hidden");
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    },
+    true
+  );
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      const emojiBtn = e.target && e.target.closest("#btn-tg-emoji-left, #btn-emoji-picker");
+      const emojiPal = document.getElementById("emoji-palette");
+      if (!emojiBtn || !emojiPal) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const attachMenu = document.getElementById("attach-hub-menu");
+      const btnAttach = document.getElementById("btn-attach-hub");
+      if (attachMenu) attachMenu.classList.add("hidden");
+      if (btnAttach) btnAttach.classList.remove("active");
+
+      if (emojiPaletteOpenStateOnDown) {
+        // Was open -> close it now and keep it closed!
+        emojiPal.classList.add("hidden");
+        emojiBtn.classList.remove("active");
+      } else {
+        // Was closed -> open it now!
+        if (typeof renderWhatsAppEmojiGrid === "function") {
+          try {
+            renderWhatsAppEmojiGrid();
+          } catch (err) { }
+        }
+        emojiPal.classList.remove("hidden");
+        emojiBtn.classList.remove("active");
+      }
+    },
+    true
+  );
+
+  // -----------------------------------------------------------------------
+  // 2. STRICT USERNAME SEARCH FILTER (REMOVE "GLOBAL DIRECTORY" & NON-MATCHES)
+  // -----------------------------------------------------------------------
+  function cleanAndFilterSidebarDirectoryDOM() {
+    const peerInput = document.getElementById("peer-id-input");
+    const sidebar = document.getElementById("app-sidebar") || document.querySelector(".sidebar");
+    if (!peerInput || !sidebar) return;
+
+    const query = peerInput.value.trim().toLowerCase().replace(/^@/, "");
+
+    // 1. Hide any element in sidebar that says "SEARCHING DIRECTORY" or "GLOBAL DIRECTORY"
+    sidebar.querySelectorAll("div, span, p, h4, h5").forEach((el) => {
+      if (el.children.length === 0) {
+        const txt = (el.textContent || "").trim().toUpperCase();
+        if (
+          txt.includes("GLOBAL DIRECTORY") ||
+          txt.includes("SEARCHING DIRECTORY") ||
+          txt.includes("TAP TO ADD FRIEND")
+        ) {
+          el.style.display = "none";
+          if (
+            el.parentElement &&
+            el.parentElement !== sidebar &&
+            el.parentElement.innerText.trim().toUpperCase().startsWith("SEARCHING DIRECTORY")
+          ) {
+            el.parentElement.style.display = "none";
+          }
+        }
+      }
+    });
+
+    // 2. Filter any rendered directory user rows so ONLY rows matching `query` remain visible!
+    const allSidebarRows = sidebar.querySelectorAll(
+      ".contact-item, .search-item, .directory-user-item, .global-user-row, [data-username]"
+    );
+
+    allSidebarRows.forEach((row) => {
+      const rowText = (row.textContent || "").toLowerCase();
+      // Extract @username from the row
+      const match = rowText.match(/@([a-z0-9_.\s-]+)/i);
+      const rowUname = (
+        row.getAttribute("data-username") ||
+        (match ? match[1].trim() : rowText)
+      ).toLowerCase();
+
+      const isGlobalResultRow = rowText.includes("+ add friend") || row.closest("#user-search-dropdown");
+
+      if (!query) {
+        // When search input is empty, hide all "+ Add Friend" directory rows
+        if (isGlobalResultRow) {
+          row.style.display = "none";
+        } else {
+          row.style.display = "";
+        }
+      } else {
+        // When typing (e.g. "helo" or "hel"), check if username starts with or contains typed letters
+        // Also support slight typo prefix (first 3 letters e.g. "hel" for "helo" -> "@hello")
+        const prefix3 = query.slice(0, 3);
+        const isMatch =
+          rowUname.includes(query) ||
+          (prefix3.length >= 2 && rowUname.includes(prefix3));
+
+        row.style.display = isMatch ? "" : "none";
+      }
+    });
+  }
+
+  const peerSearchInp = document.getElementById("peer-id-input");
+  if (peerSearchInp) {
+    ["input", "keyup", "focus", "change"].forEach((ev) => {
+      peerSearchInp.addEventListener(ev, () => {
+        cleanAndFilterSidebarDirectoryDOM();
+        setTimeout(cleanAndFilterSidebarDirectoryDOM, 80);
+        setTimeout(cleanAndFilterSidebarDirectoryDOM, 260);
+        setTimeout(cleanAndFilterSidebarDirectoryDOM, 550);
+      });
+    });
+  }
+
+  // Watch sidebar mutations so whenever Supabase returns Global Directory rows, we immediately filter them!
+  const sidebarEl = document.getElementById("app-sidebar") || document.querySelector(".sidebar");
+  if (sidebarEl && window.MutationObserver) {
+    const dirObs = new MutationObserver(() => {
+      cleanAndFilterSidebarDirectoryDOM();
+    });
+    dirObs.observe(sidebarEl, { childList: true, subtree: true });
+  }
+
+  // -----------------------------------------------------------------------
+  // 3. FIX USERNAME CLICK IN CHATS -> INSTANT PROFILE MODAL + HIDE FINGERPRINT
+  // -----------------------------------------------------------------------
+  function stripFingerprintFromProfileModal() {
+    const modal = document.getElementById("user-action-modal");
+    if (!modal) return;
+
+    // Hide any element inside #user-action-modal that mentions "Fingerprint" or "Safety Key"
+    modal.querySelectorAll("div, p, span, section").forEach((el) => {
+      const t = (el.textContent || "").trim();
+      if (
+        (t.includes("Safety Fingerprint") ||
+          t.includes("E2EE Fingerprint") ||
+          t.includes("Security Fingerprint") ||
+          t.includes("Verification Key")) &&
+        el.tagName === "DIV" &&
+        !el.classList.contains("glass-card")
+      ) {
+        el.style.display = "none";
+      }
+    });
+  }
+
+  function instantOpenProfileForUser(rawUsername) {
+    const clean = String(rawUsername || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, "");
+    if (!clean) return;
+
+    const modal = document.getElementById("user-action-modal");
+    const titleEl = document.getElementById("action-user-title");
+    const bioEl = document.getElementById("action-user-bio-box");
+    const statusEl = document.getElementById("action-user-status-pill");
+    const avEl = document.getElementById("action-user-avatar");
+
+    // 1. Immediately unhide the Profile Modal (0ms!) and set username title
+    if (modal) {
+      if (titleEl) titleEl.textContent = "@" + clean;
+      if (bioEl && (!bioEl.textContent || bioEl.textContent.includes("Loading"))) {
+        bioEl.textContent = "Hey there! I am using Krypton.";
+      }
+      if (avEl && !avEl.querySelector("img")) {
+        avEl.textContent = clean.charAt(0).toUpperCase();
+      }
+      stripFingerprintFromProfileModal();
+      modal.classList.remove("hidden");
+    }
+
+    // 2. Also call the native app.js function if present so all internal action buttons (Chat, Call, Block) bind properly
+    try {
+      if (typeof origOpenUserActionModalV28 === "function") {
+        origOpenUserActionModalV28(clean);
+      }
+    } catch (err) { }
+
+    setTimeout(stripFingerprintFromProfileModal, 50);
+    setTimeout(stripFingerprintFromProfileModal, 350);
+  }
+
+  // Restore window.openUserActionModal to our safe instant opener
+  window.openUserActionModal = instantOpenProfileForUser;
+
+  // Listen for taps on ANY @username inside messages, avatars, or chat header!
+  document.addEventListener(
+    "click",
+    (e) => {
+      const target = e.target;
+      if (!target) return;
+
+      // 1. Clicked on sender name (e.g. @hello in Global or Group chat) or sender avatar
+      const msgSenderEl = target.closest(
+        ".sender-Click, .msg-sender-name, .message-sender, .sender-tag, [data-user]"
+      );
+      if (msgSenderEl) {
+        const uname = (
+          msgSenderEl.getAttribute("data-user") ||
+          msgSenderEl.textContent ||
+          ""
+        )
+          .trim()
+          .replace(/^@/, "");
+        if (uname) {
+          e.preventDefault();
+          e.stopPropagation();
+          instantOpenProfileForUser(uname);
+          return;
+        }
+      }
+
+      // 2. Fallback: Clicked any element inside a message bubble whose text starts with "@" (like "@hello")
+      if (target.closest(".message-row")) {
+        const txt = (target.textContent || "").trim();
+        if (txt.startsWith("@") && txt.length > 1 && txt.length < 32 && !txt.includes(" ")) {
+          e.preventDefault();
+          e.stopPropagation();
+          instantOpenProfileForUser(txt.slice(1));
+          return;
+        }
+      }
+
+      // 3. Clicked Chat Header username in 1-on-1 private chat
+      const headerClick = target.closest("#header-identity-click");
+      if (headerClick) {
+        const headerTitle = document.getElementById("current-room-name");
+        const titleTxt = headerTitle ? headerTitle.textContent.trim() : "";
+        if (titleTxt.startsWith("@")) {
+          e.preventDefault();
+          e.stopPropagation();
+          instantOpenProfileForUser(titleTxt.slice(1));
+        }
+      }
+    },
+    true
+  );
+
+  setTimeout(() => {
+    cleanAndFilterSidebarDirectoryDOM();
+    stripFingerprintFromProfileModal();
+  }, 400);
+})();

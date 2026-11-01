@@ -7157,3 +7157,55 @@ body,
 #user-search-dropdown .search-dropdown-header {
   display: none !important;
 }
+
+/* =========================================================
+   v31000 PRECISION FIXES (BASED ON SCREENSHOTS):
+   1. REMOVE COLORFUL PERIMETER / FOCUS BORDER ON MESSAGE TYPING BAR
+   2. HIDE "SEARCHING DIRECTORY" & "GLOBAL DIRECTORY RESULTS" BANNERS
+   3. HIDE SAFETY FINGERPRINT KEY BOX FROM USER PROFILE DASHBOARD
+   ========================================================= */
+
+/* 1. Remove theme-colored perimeter/selection border on Message Input Pill */
+.chat-input-pill,
+.chat-input-pill:focus,
+.chat-input-pill:focus-within,
+.chat-input-pill:active,
+.chat-input-pill.active,
+.chat-input-area .chat-input-pill:focus-within {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+body:not(.dark-theme) .chat-input-pill,
+body:not(.dark-theme) .chat-input-pill:focus-within {
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+#chat-input,
+#chat-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* 2. Hide "SEARCHING DIRECTORY" bar & "GLOBAL DIRECTORY RESULTS" header in Sidebar Search */
+.searching-directory-pill,
+.searching-directory-bar,
+.global-dir-header,
+.global-directory-header,
+#global-directory-header,
+#searching-directory-banner,
+#user-search-dropdown .search-dropdown-header {
+  display: none !important;
+}
+
+/* 3. Hide E2EE Safety Fingerprint Key box inside User Profile Dashboard Modal */
+#user-action-modal .safety-fingerprint-box,
+#user-action-modal .fingerprint-card,
+#user-action-modal [id*="fingerprint"],
+#user-action-modal [class*="fingerprint"] {
+  display: none !important;
+}
