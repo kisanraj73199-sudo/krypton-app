@@ -7384,3 +7384,30 @@ body:not(.dark-theme) .msg-status-ticks.delivered {
 .call-system-log-card:active {
   transform: scale(0.96) !important;
 }
+
+/* =========================================================
+   v38000: ELIMINATE KEYBOARD OPEN/CLOSE BLACKISH FLASH
+   ========================================================= */
+
+/* Lock root background container to active theme hex so no flash can occur */
+html,
+body {
+  background-color: #06080f !important;
+  overscroll-behavior: none !important;
+}
+
+body:not(.dark-theme) {
+  background-color: #f1f5f9 !important;
+}
+
+/* Prevent layout jank or paint flash during keyboard resize animation */
+.app-layout,
+.chat-screen,
+.sidebar,
+.input-bar,
+.tg-unified-input-bar {
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  transform: translateZ(0) !important;
+  -webkit-transform: translateZ(0) !important;
+}

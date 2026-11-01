@@ -18671,3 +18671,33 @@ initIdentity();
   // Also upgrade any call bubbles already present in DOM
   document.querySelectorAll("#message-container .message-row").forEach(upgradeCallCardToClickable);
 })();
+// =========================================================================
+// 36. FEATURE v38000: KEYBOARD GLITCH & FLASH ELIMINATOR
+// =========================================================================
+
+(function () {
+  function patchKeyboardResizeGlitch() {
+    // Disable any heavy transition on input focus that causes black flash
+    const inputs = document.querySelectorAll("input, textarea");
+    inputs.forEach((inp) => {
+      if (inp.dataset.kbPatchBound) return;
+      inp.dataset.kbPatchBound = "true";
+
+      inp.addEventListener("focus", () => {
+        const appLayout = document.querySelector(".app-layout");
+        if (appLayout) {
+          appLayout.style.transform = "translateZ(0)";
+        }
+      }, { passive: true });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", patchKeyboardResizeGlitch);
+  setTimeout(patchKeyboardResizeGlitch, 400);
+
+  // Watch for newly added inputs dynamically
+  if (window.MutationObserver) {
+    const obs = new MutationObserver(() => patchKeyboardResizeGlitch());
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+})();
