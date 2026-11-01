@@ -18554,3 +18554,120 @@ initIdentity();
     }
   };
 })();
+// =========================================================================
+// 35. FEATURE v37000 (SINGLE CALL LOG DEDUPLICATION & TAP-TO-CALL-BACK):
+//     1. PREVENT DUPLICATE CALL LOG BUBBLES ON TIMEOUT / HANGUP (ONLY 1 MSG!)
+//     2. CLICKING ANY CALL BUBBLE IN CHAT IMMEDIATELY STARTS THAT EXACT CALL
+//        (VOICE OR VIDEO) JUST LIKE WHATSAPP!
+// =========================================================================
+
+(function () {
+  let callLogAlreadySentForSession = false;
+  let lastCallLogSentTimestamp = 0;
+
+  // 1. Intercept transmitPayload so duplicate CALL_LOG_DATA messages within the same call session are 100% blocked!
+  const prevTransmitV37 = window.transmitPayload;
+  window.transmitPayload = async function (payloadString) {
+    if (typeof payloadString === "string" && payloadString.startsWith("CALL_LOG_DATA:")) {
+      const now = Date.now();
+      // If a call log bubble was already sent in the last 6 seconds for this call end/timeout, block the 2nd one!
+      if (callLogAlreadySentForSession || now - lastCallLogSentTimestamp < 6000) {
+        // Especially if "cancelled" fired right before "unanswered", upgrade existing bubble to "unanswered" instead of sending a 2nd message!
+        if (payloadString.includes("|unanswered")) {
+          const cards = document.querySelectorAll("#message-container .call-system-log-card");
+          const lastCard = cards[cards.length - 1];
+          if (lastCard) {
+            const isVid = payloadString.includes("video|");
+            const isMineRow = lastCard.closest(".message-row.sent");
+            const titleEl = lastCard.querySelector(".call-log-title");
+            const subEl = lastCard.querySelector(".call-log-sub");
+            if (titleEl) {
+              titleEl.textContent = isMineRow
+                ? isVid ? "Unanswered Video Call" : "Unanswered Voice Call"
+                : isVid ? "Missed Video Call" : "Missed Voice Call";
+            }
+            if (subEl) {
+              subEl.textContent = "Tap to call back";
+            }
+          }
+        }
+        return;
+      }
+      callLogAlreadySentForSession = true;
+      lastCallLogSentTimestamp = now;
+      setTimeout(() => {
+        callLogAlreadySentForSession = false;
+      }, 6000);
+    }
+    return prevTransmitV37(payloadString);
+  };
+
+  // Reset the lock whenever a new call is initiated
+  const prevInitiateCallV37 = window.initiateCallPermission;
+  window.initiateCallPermission = async function (type) {
+    callLogAlreadySentForSession = false;
+    return prevInitiateCallV37(type);
+  };
+
+  // 2. Make Every Call Bubble in Chat Clickable to Redial / Call Back (Voice or Video)
+  function upgradeCallCardToClickable(node) {
+    if (!node) return;
+    const card = node.querySelector(".call-system-log-card");
+    if (!card || card.dataset.clickableCallBound) return;
+    card.dataset.clickableCallBound = "true";
+
+    const titleEl = card.querySelector(".call-log-title");
+    const subEl = card.querySelector(".call-log-sub");
+    const titleText = (titleEl ? titleEl.textContent : "").toLowerCase();
+    const isVideoCall = titleText.includes("video");
+    const callTypeToStart = isVideoCall ? "video" : "voice";
+
+    card.dataset.callType = callTypeToStart;
+    card.title = `Tap to start ${isVideoCall ? "Video" : "Voice"} Call`;
+
+    // Make subtitle say "Tap to call back" on unanswered/missed/declined calls
+    if (subEl && !titleText.includes("duration")) {
+      const curSub = subEl.textContent || "";
+      if (
+        curSub.includes("header") ||
+        curSub.includes("timeout") ||
+        curSub.includes("before answer")
+      ) {
+        subEl.textContent = `Tap to ${isVideoCall ? "video" : "voice"} call back`;
+      }
+    }
+
+    // If this is a received unanswered call, show "Missed Voice/Video Call" for receiver and "Unanswered" for caller
+    const isSentByMe = node.classList.contains("sent");
+    if (!isSentByMe && titleEl && titleEl.textContent.includes("Unanswered")) {
+      titleEl.textContent = isVideoCall ? "Missed Video Call" : "Missed Voice Call";
+    }
+
+    card.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (typeof initiateCallPermission === "function") {
+        initiateCallPermission(callTypeToStart);
+      } else {
+        const btn = document.getElementById(
+          callTypeToStart === "video" ? "btn-start-video" : "btn-start-voice"
+        );
+        if (btn) btn.click();
+      }
+    });
+  }
+
+  // Hook createMessageNode so all newly rendered or cached call bubbles are clickable
+  const prevCreateMsgNodeV37 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateMsgNodeV37(msg, rawTextOverride);
+    if (node) {
+      upgradeCallCardToClickable(node);
+    }
+    return node;
+  };
+
+  // Also upgrade any call bubbles already present in DOM
+  document.querySelectorAll("#message-container .message-row").forEach(upgradeCallCardToClickable);
+})();

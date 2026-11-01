@@ -7365,3 +7365,22 @@ body:not(.dark-theme) .msg-status-ticks.delivered {
   background: rgba(16, 185, 129, 0.22) !important;
   color: #10b981 !important;
 }
+
+/* =========================================================
+   v37000: CLICKABLE WHATSAPP-STYLE CALL LOG BUBBLES
+   ========================================================= */
+
+.call-system-log-card {
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: transform 0.14s ease, filter 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.call-system-log-card:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+
+.call-system-log-card:active {
+  transform: scale(0.96) !important;
+}
