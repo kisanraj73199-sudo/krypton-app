@@ -7608,3 +7608,61 @@ body.in-global-chat-room .krypton-clean-sidebar {
     transform: translateX(0);
   }
 }
+
+/* =========================================================
+   v42000: TELEGRAM-STYLE SLIDING DOCK PILL & SHADOW ANIMATION
+   ========================================================= */
+
+#krypton-bottom-nav {
+  position: absolute;
+  overflow: hidden !important;
+}
+
+/* Telegram-style floating pill & glowing shadow that slides smoothly between tabs */
+.tg-dock-sliding-indicator {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  box-shadow:
+    0 4px 16px var(--accent-glow),
+    0 0 12px var(--accent-soft),
+    inset 0 1px 1px rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+  z-index: 0;
+  transition:
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
+  will-change: transform, width;
+}
+
+/* Keep dock icons & labels above the sliding indicator */
+#krypton-bottom-nav .krypton-dock-item {
+  position: relative;
+  z-index: 2;
+  transition: color 0.24s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/* Disable static background on individual icon wrap when sliding indicator is active */
+#krypton-bottom-nav.has-tg-slider .krypton-dock-item.active .dock-icon-wrap {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#krypton-bottom-nav .krypton-dock-item.active .dock-icon-wrap svg {
+  filter: drop-shadow(0 2px 8px var(--accent-glow));
+  transform: translateY(-1px) scale(1.08);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), filter 0.26s ease;
+}
+
+#krypton-bottom-nav .krypton-dock-item .dock-icon-wrap svg {
+  transition: transform 0.24s ease, filter 0.24s ease;
+}
+
+#krypton-bottom-nav .krypton-dock-item.active .dock-label {
+  font-weight: 800;
+  text-shadow: 0 0 10px var(--accent-glow);
+}

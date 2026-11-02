@@ -19290,3 +19290,242 @@ initIdentity();
     syncGlobalChatBottomBarVisibility();
   }, 350);
 })();
+// =========================================================================
+// 39. FEATURE v42000 (APP-WIDE HAPTIC VIBRATION ENGINE, SETTINGS TOGGLE
+//     NEXT TO SOUND FX & TELEGRAM-STYLE SLIDING BOTTOM DOCK SHADOW):
+//     1. GLOBAL HAPTIC CONTROLLER + OVERRIDE navigator.vibrate WHEN OFF
+//     2. INJECT "HAPTIC VIBRATION" SWITCH RIGHT NEXT TO "SOUND EFFECTS"
+//     3. ADD HAPTICS ACROSS SEND, REACT, POLL, RECORD, TABS & SWITCHES
+//     4. SMOOTH SLIDING PILL & GLOW SHADOW ON BOTTOM NAVIGATION DOCK
+// =========================================================================
+
+(function () {
+  // -----------------------------------------------------------------------
+  // 1. INITIALIZE VIBRATION SETTING & OVERRIDE navigator.vibrate GLOBALLY
+  // -----------------------------------------------------------------------
+  if (userSettings.vibration === undefined) {
+    userSettings.vibration = true;
+    localStorage.setItem("krypton_settings", JSON.stringify(userSettings));
+  }
+
+  const nativeVibrateFn =
+    navigator.vibrate ? navigator.vibrate.bind(navigator) : null;
+
+  // Override navigator.vibrate so existing swipe-to-reply / long-press / dock vibrations
+  // automatically respect userSettings.vibration ON/OFF!
+  if (nativeVibrateFn) {
+    navigator.vibrate = function (pattern) {
+      if (!userSettings.vibration) return false;
+      try {
+        return nativeVibrateFn(pattern);
+      } catch (e) {
+        return false;
+      }
+    };
+  }
+
+  // Global helper to trigger clean haptic feedback anywhere in the app
+  window.triggerKryptonHaptic = function (type = "light") {
+    if (!userSettings.vibration || !nativeVibrateFn) return;
+    try {
+      if (type === "micro") nativeVibrateFn(7);
+      else if (type === "light") nativeVibrateFn(11);
+      else if (type === "medium") nativeVibrateFn(18);
+      else if (type === "heavy") nativeVibrateFn([22, 30, 14]);
+      else nativeVibrateFn(10);
+    } catch (e) { }
+  };
+
+  // -----------------------------------------------------------------------
+  // 2. INJECT "HAPTIC VIBRATION" SWITCH RIGHT BELOW "SOUND EFFECTS" IN SETTINGS
+  // -----------------------------------------------------------------------
+  function injectVibrationToggleInSettings() {
+    const soundToggle = document.getElementById("toggle-sound-fx");
+    if (!soundToggle) return;
+
+    const soundSettingRow = soundToggle.closest(".setting-item");
+    if (!soundSettingRow || !soundSettingRow.parentElement) return;
+
+    let vibToggle = document.getElementById("toggle-haptic-vibration");
+    if (!vibToggle) {
+      const vibRow = document.createElement("div");
+      vibRow.className = "setting-item";
+      vibRow.id = "setting-item-haptic-vibration";
+      vibRow.innerHTML = `
+        <div class="setting-text">
+          <span class="setting-title">Haptic Vibration</span>
+          <span class="setting-desc">Tactile vibration on tab switch, swipe reply, reactions & buttons</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-haptic-vibration" ${userSettings.vibration !== false ? "checked" : ""} />
+          <span class="slider"></span>
+        </label>
+      `;
+
+      // Insert right after the Sound Effects row!
+      soundSettingRow.insertAdjacentElement("afterend", vibRow);
+      vibToggle = vibRow.querySelector("#toggle-haptic-vibration");
+
+      vibToggle.addEventListener("change", (e) => {
+        userSettings.vibration = Boolean(e.target.checked);
+        localStorage.setItem("krypton_settings", JSON.stringify(userSettings));
+        if (userSettings.vibration) {
+          window.triggerKryptonHaptic("medium");
+          showToast("Haptic Vibration enabled", "info", 1500);
+        } else {
+          showToast("Haptic Vibration turned OFF", "info", 1500);
+        }
+      });
+    } else {
+      vibToggle.checked = userSettings.vibration !== false;
+    }
+  }
+
+  // Keep toggle state synced when applySettings runs
+  const prevApplySettingsV42 = window.applySettings;
+  if (typeof prevApplySettingsV42 === "function") {
+    window.applySettings = function () {
+      prevApplySettingsV42();
+      injectVibrationToggleInSettings();
+      const vibToggle = document.getElementById("toggle-haptic-vibration");
+      if (vibToggle) vibToggle.checked = userSettings.vibration !== false;
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // 3. APP-WIDE HAPTIC TRIGGERS (EVERY IMPORTANT INTERACTION)
+  // -----------------------------------------------------------------------
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!userSettings.vibration) return;
+      const t = e.target;
+      if (!t) return;
+
+      // 1. Send Message / Mic Hold / Call Buttons / Pin / Unpin -> Medium Haptic (14ms)
+      if (
+        t.closest(
+          "#btn-send, #btn-record-audio, #btn-start-voice, #btn-start-video, #btn-accept-call, #btn-decline-call, #btn-end-call, #btn-cycle-pinned-msg, #btn-unpin-msg"
+        )
+      ) {
+        window.triggerKryptonHaptic("medium");
+        return;
+      }
+
+      // 2. Quick Reactions, Poll Options, Context Menu Buttons -> Light Haptic (11ms)
+      if (
+        t.closest(
+          ".msg-ctx-reactions-bar span, .quick-react-popover span, .reaction-chip, .krypton-poll-opt-btn, .msg-ctx-btn, .krypton-dock-item"
+        )
+      ) {
+        window.triggerKryptonHaptic("light");
+        return;
+      }
+
+      // 3. Category Pills, Emoji Tabs, Theme Swatches, Switches, ViewMode Pills -> Micro Haptic (7ms)
+      if (
+        t.closest(
+          ".cat-filter-pill, .sidebar-tab-btn, .emoji-cat-btn, .theme-swatch-btn, .switch, .viewmode-pill, #btn-tg-emoji-left, #btn-attach-hub, #btn-quick-theme, #btn-panic-lock"
+        )
+      ) {
+        window.triggerKryptonHaptic("micro");
+      }
+    },
+    { passive: true, capture: true }
+  );
+
+  // -----------------------------------------------------------------------
+  // 4. TELEGRAM-STYLE SMOOTH SLIDING PILL & SHADOW ON BOTTOM STATUS BAR
+  // -----------------------------------------------------------------------
+  function ensureDockSlidingIndicator() {
+    const dock = document.getElementById("krypton-bottom-nav");
+    if (!dock) return null;
+
+    let indicator = dock.querySelector(".tg-dock-sliding-indicator");
+    if (!indicator) {
+      indicator = document.createElement("div");
+      indicator.className = "tg-dock-sliding-indicator";
+      dock.insertBefore(indicator, dock.firstChild);
+      dock.classList.add("has-tg-slider");
+    }
+    return indicator;
+  }
+
+  function syncDockSlidingIndicatorPosition(customTargetBtn = null) {
+    const dock = document.getElementById("krypton-bottom-nav");
+    if (!dock || dock.style.display === "none") return;
+
+    const indicator = ensureDockSlidingIndicator();
+    if (!indicator) return;
+
+    const activeBtn =
+      customTargetBtn ||
+      dock.querySelector(".krypton-dock-item.active") ||
+      dock.querySelector(".krypton-dock-item");
+
+    if (!activeBtn || activeBtn.style.display === "none") {
+      indicator.style.opacity = "0";
+      return;
+    }
+
+    const dockRect = dock.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    if (dockRect.width === 0 || btnRect.width === 0) return;
+
+    // Pill width sits snugly around the icon (like Telegram's 52px glowing capsule)
+    const pillWidth = Math.min(54, Math.max(42, btnRect.width * 0.68));
+    const pillLeft = btnRect.left - dockRect.left + (btnRect.width - pillWidth) / 2;
+
+    indicator.style.width = `${pillWidth}px`;
+    indicator.style.transform = `translate3d(${pillLeft}px, 0, 0)`;
+    indicator.style.opacity = "1";
+  }
+
+  // Hook updateBottomDockActiveState so whenever active tab changes (via tap OR swipe),
+  // the glowing shadow pill slides smoothly to the new tab!
+  const prevUpdateDockStateV42 = window.updateBottomDockActiveState;
+  window.updateBottomDockActiveState = function (activeTab = "chats") {
+    if (typeof prevUpdateDockStateV42 === "function") {
+      prevUpdateDockStateV42(activeTab);
+    } else {
+      document.querySelectorAll("#krypton-bottom-nav .krypton-dock-item").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.dockTab === activeTab);
+      });
+    }
+    requestAnimationFrame(() => syncDockSlidingIndicatorPosition());
+  };
+
+  // Also observe class changes on dock items so any direct `.classList.add("active")` triggers the slide
+  function bindDockObserverAndResize() {
+    const dock = document.getElementById("krypton-bottom-nav");
+    if (!dock || dock.dataset.sliderObsBound) return;
+    dock.dataset.sliderObsBound = "true";
+
+    ensureDockSlidingIndicator();
+    syncDockSlidingIndicatorPosition();
+
+    if (window.MutationObserver) {
+      const obs = new MutationObserver(() => {
+        requestAnimationFrame(() => syncDockSlidingIndicatorPosition());
+      });
+      obs.observe(dock, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ["class", "style"]
+      });
+    }
+
+    window.addEventListener("resize", () => {
+      requestAnimationFrame(() => syncDockSlidingIndicatorPosition());
+    });
+  }
+
+  function initV42000Upgrades() {
+    injectVibrationToggleInSettings();
+    bindDockObserverAndResize();
+    setTimeout(syncDockSlidingIndicatorPosition, 120);
+  }
+
+  document.addEventListener("DOMContentLoaded", initV42000Upgrades);
+  setTimeout(initV42000Upgrades, 350);
+})();
