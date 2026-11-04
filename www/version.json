@@ -1,0 +1,11 @@
+{
+  "version": "2.5.146",
+  "apkVersion": "2.5.146",
+  "versionCode": 146,
+  "featureVersion": "v60000",
+  "commit": "362bdc6",
+  "timestamp": 1793805074,
+  "notes": "Krypton v60000: Clean production Android repository with native in-app APK updater  ",
+  "repo": "kisanraj73199-sudo/krypton-app",
+  "apkUrl": "https://github.com/kisanraj73199-sudo/krypton-app/releases/download/latest/krypton.apk"
+}
