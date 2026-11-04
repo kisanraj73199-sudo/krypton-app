@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
+  <title>Krypton | Encrypted Messenger</title>
+  <meta name="color-scheme" content="light dark" />
+
+  <!-- PWA & App Icons -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#06080f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Krypton" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=25000" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=25000" />
+  <link rel="apple-touch-icon" href="icon-192.png?v=25000" />
+
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css?v=25000" />
+</head>
+
+<body class="dark-theme" data-accent="emerald">
+
+  <!-- Ambient Animated Cyber-Mesh Orbs -->
+  <div class="ambient-mesh-bg" aria-hidden="true">
+    <div class="mesh-orb orb-1"></div>
+    <div class="mesh-orb orb-2"></div>
+    <div class="mesh-orb orb-3"></div>
+  </div>
+
+  <!-- Non-Blocking Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Hidden Legacy Hooks for Removed PWA Install Banner -->
+  <div id="pwa-install-banner" class="hidden" style="display: none !important;" aria-hidden="true">
+    <button id="btn-banner-install-pwa" class="hidden"></button>
+    <button id="btn-close-pwa-banner" class="hidden"></button>
+  </div>
+
+  <!-- WhatsApp-Style Message Info Modal (Seen / Delivered / Sent Time for 1-on-1 & Groups) -->
+  <div id="krypton-msg-info-modal" class="glass-modal hidden" style="z-index: 99999997;">
+    <div class="glass-card" style="max-width: 390px; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+      <div class="settings-pinned-header" style="padding: 14px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="info" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 800;">Message Info</h3>
+        </div>
+        <button type="button" id="btn-close-msg-info-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div id="msg-info-modal-body" class="settings-scroll-body" style="padding: 16px 18px; gap: 12px;"></div>
+    </div>
+  </div>
+
+  <!-- WhatsApp-Style In-App Updater Modal -->
+  <div id="krypton-inapp-update-modal" class="glass-modal hidden" style="z-index: 99999998;">
+    <div class="glass-card" style="max-width: 375px; text-align: center; align-items: center;">
+      <img src="icon-192.png?v=25000" alt="Krypton" style="width: 64px; height: 64px; border-radius: 18px; border: 1.5px solid var(--accent-primary); box-shadow: 0 8px 24px var(--accent-glow);" />
+      <h3 id="inapp-update-title" style="font-size: 18px; font-weight: 800; margin-top: 4px;">Krypton App Update</h3>
+      <p id="inapp-update-desc" style="font-size: 12px; color: var(--text-muted); line-height: 1.45;">Syncing latest features & checking new APK release...</p>
+      <div style="width: 100%; height: 8px; background: var(--glass-card); border-radius: 999px; overflow: hidden; border: 1px solid var(--glass-border-subtle); margin: 6px 0;">
+        <div id="inapp-update-progress-bar" style="width: 20%; height: 100%; background: var(--accent-gradient); transition: width 0.25s ease;"></div>
+      </div>
+      <span id="inapp-update-status-pct" style="font-size: 11px; font-weight: 800; color: var(--accent-primary);">Checking...</span>
+      <div id="inapp-update-actions" class="modal-actions hidden" style="width: 100%; margin-top: 8px; flex-direction: column; gap: 8px;">
+        <button type="button" id="btn-download-apk-over-existing" class="glass-btn primary" style="width: 100%;">
+          <i data-lucide="download" style="width: 15px; height: 15px; vertical-align: -2px; margin-right: 5px;"></i>
+          <span>Download & Install New APK Update</span>
+        </button>
+        <button type="button" id="btn-instant-hot-reload" class="glass-btn secondary" style="width: 100%;">
+          <span>Apply Instant Live Patch Now</span>
+        </button>
+        <button type="button" id="btn-close-update-modal" class="glass-btn-sm" style="width: 100%; padding: 8px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp-Style Link Web Device (QR Code Scanner) Modal -->
+  <div id="krypton-qr-scanner-modal" class="glass-modal hidden" style="z-index: 99999996;">
+    <div class="glass-card" style="max-width: 400px; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="scan-line" style="width: 18px; height: 18px;"></i>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 800;">Link Krypton Web Device</h3>
+        </div>
+        <button type="button" id="btn-close-qr-scanner" class="icon-close-btn sm" title="Close Scanner">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div style="padding: 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;">
+        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.45;">
+          Open <strong>Krypton Web</strong> on your laptop/PC browser and point your phone's camera at the QR code to log in instantly.
+        </p>
+
+        <div id="qr-camera-viewport" style="position: relative; width: 250px; height: 250px; border-radius: 22px; overflow: hidden; background: #05070c; border: 2px solid var(--accent-primary); box-shadow: 0 0 28px var(--accent-glow);">
+          <video id="qr-scanner-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(1) !important;"></video>
+          <div id="qr-laser-line" style="position: absolute; left: 12px; right: 12px; height: 2.5px; background: var(--accent-primary); box-shadow: 0 0 12px var(--accent-primary); top: 15%; animation: qrLaserScan 2.2s infinite alternate ease-in-out;"></div>
+          <div style="position: absolute; inset: 14px; border: 1.5px dashed rgba(255,255,255,0.28); border-radius: 14px; pointer-events: none;"></div>
+        </div>
+
+        <span id="qr-scan-status-text" style="font-size: 11.5px; font-weight: 700; color: var(--accent-primary);">
+          Scanning for Krypton Web QR Code...
+        </span>
+
+        <div style="width: 100%; border-top: 1px solid var(--glass-border-subtle); padding-top: 10px; margin-top: 2px;">
+          <label class="auth-field-label" style="text-align: left;">OR ENTER WEB PAIRING CODE MANUALLY</label>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <input type="text" id="qr-manual-code-input" placeholder="Enter Web Code (e.g. KRYP-8492)" autocomplete="off" style="flex: 1; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--glass-border-subtle); background: var(--glass-card); color: var(--text-main); font-size: 13px; outline: none; text-transform: uppercase;" />
+            <button type="button" id="btn-link-web-by-code" class="glass-btn-sm btn-save-action" style="padding: 0 14px;">Link Web</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy Panic Blur & App PIN Lock Overlay -->
+  <div id="app-lock-overlay" class="glass-modal hidden" style="z-index: 99999995; background: rgba(4, 7, 15, 0.94); backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);">
+    <div class="glass-card lock-screen-card" style="max-width: 340px; text-align: center;">
+      <div class="auth-logo-glow" style="padding: 0; overflow: hidden;">
+        <img src="icon-192.png?v=25000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
+      </div>
+      <h3 style="font-size: 19px; font-weight: 800;">Mesh Privacy Shield</h3>
+      <p id="lock-screen-desc" style="font-size: 12px; color: var(--text-dim);">Screen is locked for your privacy</p>
+      <div id="pin-input-section" class="hidden" style="margin-top: 8px;">
+        <div class="pin-input-with-toggle" style="max-width: 220px; margin: 0 auto;">
+          <input type="password" id="lock-pin-input" maxlength="6" placeholder="••••" class="pin-code-box" autocomplete="off" inputmode="numeric" />
+          <button type="button" class="pin-visibility-toggle" data-pin-target="lock-pin-input" aria-label="Show PIN" title="Show PIN">
+            <i data-lucide="eye"></i>
+          </button>
+        </div>
+        <span id="lock-pin-error" class="status-msg error"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; width: 100%;">
+        <button id="btn-unlock-screen" class="glass-btn primary" style="width: 100%;">
+          <i data-lucide="unlock" style="width: 15px; height: 15px; vertical-align: -2px; margin-right: 5px;"></i>
+          <span>Unlock Mesh</span>
+        </button>
+        <button id="btn-biometric-unlock" type="button" class="glass-btn secondary hidden" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+          <i data-lucide="fingerprint" style="width: 16px; height: 16px; color: var(--accent-primary);"></i>
+          <span>Unlock with Fingerprint / Face</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart App Lock Setup & Auto-Lock Timer Modal -->
+  <div id="smart-lock-setup-modal" class="glass-modal hidden" style="z-index: 9999999;">
+    <div class="glass-card smart-lock-scrollable-card" style="max-width: 425px; max-height: 86dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="lock-keyhole" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 style="font-size: 16px; font-weight: 800;">Smart Privacy Lock & Timer</h3>
+        </div>
+        <button id="btn-close-smart-lock-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div class="settings-scroll-body" style="padding: 16px 18px; gap: 14px; overflow-y: auto; flex: 1 1 auto; min-height: 0;">
+        <div class="smart-lock-instructions">
+          <div class="lock-inst-item">
+            <span class="lock-inst-badge">Lock Icon</span>
+            <span>Tap Home screen <strong>Lock Icon</strong> to lock Krypton immediately.</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="auth-field-label">SET 4-6 DIGIT SECURITY PIN</label>
+          <div class="pin-input-with-toggle">
+            <input type="password" id="modal-smart-pin-input" maxlength="6" placeholder="Enter 4+ digit PIN (leave empty to remove)" autocomplete="off" inputmode="numeric" />
+            <button type="button" class="pin-visibility-toggle" data-pin-target="modal-smart-pin-input" aria-label="Show PIN" title="Show PIN">
+              <i data-lucide="eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-item" id="biometric-setup-row" style="background: var(--glass-card); padding: 9px 12px; border-radius: 13px; border: 1px solid var(--glass-border-subtle);">
+          <div class="setting-text">
+            <span class="setting-title" style="font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="fingerprint" style="width: 14px; height: 14px; color: var(--accent-primary);"></i>
+              <span>Biometric Unlock (Fingerprint / Face)</span>
+            </span>
+            <span class="setting-desc" id="biometric-setup-desc" style="font-size: 10.5px;">Use phone's hardware Fingerprint or Face Unlock</span>
+          </div>
+          <button type="button" id="btn-enroll-biometric" class="glass-btn-sm btn-save-action" style="padding: 5px 11px;">Enable</button>
+        </div>
+
+        <div class="input-group">
+          <label class="auth-field-label">AUTO-LOCK TIMING (BACKGROUND / MINIMIZE)</label>
+          <div class="autolock-radio-group" id="autolock-options-list">
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="instant" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">Instant on Minimize / App Switch</span>
+                <span class="autolock-opt-sub">Locks immediately when you minimize app</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="1m" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">After 1 Minute in Background</span>
+                <span class="autolock-opt-sub">Auto-locks if app stays minimized for 60 seconds</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="5m" />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">After 5 Minutes in Background</span>
+                <span class="autolock-opt-sub">Auto-locks if app stays minimized for 5 minutes</span>
+              </div>
+            </label>
+            <label class="autolock-option-card">
+              <input type="radio" name="autolock-mode" value="restart" checked />
+              <div class="autolock-opt-meta">
+                <span class="autolock-opt-title">Only on App Restart / Manual Lock</span>
+                <span class="autolock-opt-sub">Requires PIN/Biometrics when opening app or tapping Lock</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button id="btn-lock-now-from-modal" class="glass-btn secondary">Lock Now</button>
+        <button id="btn-save-smart-lock-modal" class="glass-btn primary">Save Lock Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create / Manage Group Modal -->
+  <div id="group-create-modal" class="glass-modal hidden" style="z-index: 9999998;">
+    <div class="glass-card group-admin-modal-card" style="max-width: 430px; max-height: 88dvh; display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+      <div class="settings-pinned-header" style="padding: 15px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 id="group-modal-heading" style="font-size: 16px; font-weight: 800;">Create Group</h3>
+        </div>
+        <button id="btn-close-group-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div class="settings-scroll-body" style="padding: 16px 18px; gap: 14px;">
+        <div class="settings-profile-card group-profile-header-card" id="group-profile-header-card">
+          <div class="group-avatar-top-row">
+            <div class="settings-avatar-wrap" id="group-avatar-wrap">
+              <div class="avatar lg" id="group-modal-avatar-preview" title="Group Icon">
+                <i data-lucide="users" style="width: 24px; height: 24px;"></i>
+              </div>
+              <button type="button" id="btn-change-group-avatar" class="avatar-edit-badge" title="Change Group Photo (Owner Only)">
+                <i data-lucide="camera" style="width: 13px; height: 13px;"></i>
+              </button>
+              <input type="file" id="group-avatar-file-input" accept="image/*" style="display: none;" />
+            </div>
+            <div id="group-avatar-btn-row" class="group-avatar-btn-col">
+              <button type="button" id="btn-upload-group-photo" class="glass-btn-sm">Upload Icon</button>
+              <button type="button" id="btn-remove-group-photo" class="glass-btn-sm danger">Remove</button>
+            </div>
+          </div>
+
+          <div class="group-fields-stack">
+            <div class="input-group" id="group-name-input-wrap">
+              <label class="auth-field-label">GROUP NAME</label>
+              <input type="text" id="group-name-input" placeholder="e.g. Cyber Squad" maxlength="36" autocomplete="off" />
+            </div>
+            <div class="input-group" id="group-desc-input-wrap">
+              <label class="auth-field-label">GROUP DESCRIPTION / BIO</label>
+              <input type="text" id="group-desc-input" placeholder="Group rules or topic..." maxlength="90" autocomplete="off" />
+            </div>
+          </div>
+        </div>
+
+        <div class="input-group" id="group-add-members-section" style="position: relative; margin: 0;">
+          <label class="auth-field-label">ADD FRIENDS TO GROUP (TYPE TO SEARCH YOUR FRIENDS)</label>
+          <input type="text" id="group-members-input" placeholder="Search friend's @username..." autocomplete="off" />
+          <div id="group-friends-live-suggestions" class="live-user-suggestions hidden" style="margin-top: 6px; max-height: 165px;"></div>
+          <div id="group-friends-chips" class="group-friends-chips"></div>
+        </div>
+
+        <div id="group-owner-controls-section" class="theme-picker-block" style="gap: 10px; padding: 12px 14px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="shield" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+            <span class="setting-title" style="font-size: 12.5px; color: var(--accent-primary);">GROUP ADMIN CONTROLS (OWNER ONLY)</span>
+          </div>
+
+          <div class="setting-item" style="padding-top: 4px;">
+            <div class="setting-text">
+              <span class="setting-title" style="font-size: 12.5px;">Only Owner Can Send Messages</span>
+              <span class="setting-desc" style="font-size: 10.5px;">Turn ON to mute all members (Announcement Mode)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-group-only-owner-msg" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item" style="padding-top: 6px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="font-size: 12.5px;">Allow Members to See Member List</span>
+              <span class="setting-desc" style="font-size: 10.5px;">Turn OFF to hide group participants from members</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-group-show-members" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div id="group-members-list-section" class="input-group" style="margin: 0;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <label class="auth-field-label" style="margin: 0;" id="group-members-count-label">GROUP MEMBERS</label>
+            <span id="group-owner-badge-pill" class="online-pill-badge" style="font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i data-lucide="shield-check" style="width: 11px; height: 11px;"></i><span>Admin</span></span>
+          </div>
+          <div id="group-current-members-list" class="group-members-directory"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button type="button" id="btn-cancel-group-modal" class="glass-btn secondary">Close</button>
+        <button type="button" id="btn-confirm-group-modal" class="glass-btn primary">Create Group</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Krypton AI Assistant Interactive Help Drawer -->
+  <div id="krypton-ai-drawer" class="glass-modal hidden" style="z-index: 99999992;">
+    <div class="glass-card krypton-ai-card">
+      <div class="ai-drawer-header">
+        <div class="brand-inline">
+          <div class="ai-avatar-orb">
+            <span class="ai-orb-ring"></span>
+            <span class="ai-orb-core">✨</span>
+          </div>
+          <div>
+            <h3 style="font-size: 15.5px; font-weight: 800;">Krypton AI Assistant</h3>
+            <span class="ai-privacy-badge" id="ai-privacy-subtext">100% Local Sandbox • Zero User Data Access</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="ai-lang-toggle" id="ai-lang-toggle">
+            <button type="button" class="ai-lang-btn active" data-ai-lang="hinglish">Hinglish</button>
+            <button type="button" class="ai-lang-btn" data-ai-lang="english">English</button>
+          </div>
+          <button id="btn-close-ai-drawer" class="icon-close-btn sm" title="Close AI Guide">
+            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="ai-quick-chips-bar" id="ai-quick-chips"></div>
+      <div class="ai-chat-feed" id="ai-chat-feed"></div>
+
+      <div class="ai-input-row">
+        <input type="text" id="ai-question-input" placeholder="Ask about any icon or feature..." autocomplete="off" />
+        <button id="btn-ask-ai" class="send-btn" style="height: 38px; padding: 0 14px;">
+          <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Non-Blocking Confirm / Prompt Dialog Modal -->
+  <div id="custom-dialog-modal" class="glass-modal hidden" style="z-index: 9999998;">
+    <div class="glass-card dialog-card">
+      <div class="brand">
+        <div class="dialog-icon-circle" id="dialog-icon-wrap">
+          <i data-lucide="shield-alert" id="dialog-icon"></i>
+        </div>
+        <h3 id="dialog-title" style="margin-top: 6px; font-size: 17px;">Confirm Action</h3>
+        <p id="dialog-message" style="margin-top: 4px; line-height: 1.45;"></p>
+      </div>
+      <div id="dialog-input-wrap" class="input-group hidden" style="margin-top: 6px;">
+        <input type="text" id="dialog-input" placeholder="Type here..." autocomplete="off" />
+      </div>
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="dialog-cancel-btn" class="glass-btn secondary">Cancel</button>
+        <button id="dialog-confirm-btn" class="glass-btn primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Image & Profile Picture Lightbox Viewer Modal -->
+  <div id="image-viewer-modal" class="glass-modal hidden">
+    <div class="image-viewer-top-bar">
+      <span id="image-viewer-caption" class="image-viewer-caption"></span>
+      <div style="display: flex; gap: 10px;">
+        <a id="btn-download-image-viewer" class="image-viewer-action-btn" download="krypton-image.jpg" title="Download Image">
+          <i data-lucide="download"></i>
+        </a>
+        <button id="btn-close-image-viewer" class="image-viewer-action-btn" title="Close Viewer (Esc)">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="image-viewer-content">
+      <img id="image-viewer-img" src="" alt="Full Screen Attachment" />
+    </div>
+  </div>
+
+  <!-- Settings & Theme Customization Modal -->
+  <div id="settings-modal" class="glass-modal hidden">
+    <div class="glass-card settings-card" id="settings-dialog-card">
+
+      <!-- PINNED HEADER -->
+      <div class="settings-pinned-header">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="sparkles" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3>Themes, Privacy & Security</h3>
+        </div>
+        <button id="btn-close-settings" class="icon-close-btn" title="Close">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <!-- SCROLLABLE CONTENT BODY -->
+      <div class="settings-scroll-body">
+
+        <div class="settings-profile-card hidden" aria-hidden="true">
+          <div class="settings-avatar-wrap">
+            <div class="avatar lg" id="settings-preview-avatar" style="cursor: zoom-in;" title="Click to view full size">?</div>
+            <button id="btn-change-avatar" class="avatar-edit-badge" title="Change Profile Picture">
+              <i data-lucide="camera" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+
+          <div class="settings-user-meta" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+              <div class="settings-username-row" id="settings-username-row">
+                <span class="settings-username-text" id="settings-display-uid">@username</span>
+                <input type="text" id="settings-username-edit-input" class="hidden settings-edit-input"
+                  autocomplete="username" placeholder="new_username" />
+                <div class="settings-username-actions">
+                  <button type="button" id="copy-id-btn" class="tool-btn username-inline-btn" title="Copy Username">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="btn-edit-username" class="tool-btn username-inline-btn" title="Edit Username">
+                    <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="btn-save-username" class="glass-btn-sm hidden btn-save-action username-save-btn">Save</button>
+                  <button type="button" id="btn-cancel-username" class="tool-btn username-inline-btn hidden" title="Cancel Rename">
+                    <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+              <span id="settings-username-error"
+                style="color: var(--danger-color); font-size: 11px; font-weight: 600; display: none;">Invalid username</span>
+            </div>
+
+            <div class="settings-avatar-action-row" style="display: flex; gap: 6px; width: 100%;">
+              <button id="btn-upload-avatar-trigger" class="glass-btn-sm"
+                style="flex: 1; padding: 6px 8px; text-align: center;">Upload Photo</button>
+              <button id="btn-remove-avatar" class="glass-btn-sm danger"
+                style="flex: 1; padding: 6px 8px; text-align: center;">Remove</button>
+              <input type="file" id="avatar-file-input" accept="image/*" style="display: none;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-list">
+          <div class="setting-item hidden" aria-hidden="true" style="flex-direction: column; align-items: stretch; gap: 6px;">
+            <div class="setting-text">
+              <span class="setting-title">About / Bio</span>
+              <span class="setting-desc">Visible on your profile card across the mesh</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="settings-bio-input" placeholder="e.g. Hey there! I am using Krypton."
+                maxlength="80" class="settings-bio-input" autocomplete="off" />
+              <button id="btn-save-bio" class="glass-btn-sm btn-save-action" style="padding: 6px 14px;">Save</button>
+            </div>
+          </div>
+
+          <!-- Multi-Color Accent Theme Engine -->
+          <div class="setting-item theme-picker-block" style="padding: 11px 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px;">
+              <div class="setting-text">
+                <span class="setting-title">Cyber Accent Theme</span>
+                <span class="setting-desc">Tap palette icon to choose your neon accent color</span>
+              </div>
+              <button type="button" id="btn-toggle-theme-circles" class="theme-palette-trigger-btn" title="Choose Accent Color">
+                <span class="active-theme-dot-indicator"></span>
+                <i data-lucide="palette" style="width: 16px; height: 16px;"></i>
+              </button>
+            </div>
+
+            <div class="theme-swatches-circles-row hidden" id="theme-swatches-container">
+              <button type="button" class="theme-swatch-btn circle-only active" data-theme-color="emerald" title="Krypton Emerald">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #10b981, #059669);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="violet" title="Cyber Amethyst">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #8b5cf6, #ec4899);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="ocean" title="Electric Cobalt">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #0ea5e9, #3b82f6);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="crimson" title="Crimson Pulse">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #f43f5e, #fb7185);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="amber" title="Solar Gold">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #f59e0b, #ea580c);"></span>
+              </button>
+              <button type="button" class="theme-swatch-btn circle-only" data-theme-color="aurora" title="Aurora Mint">
+                <span class="swatch-dot" style="background: linear-gradient(135deg, #14b8a6, #6366f1);"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- App PIN Lock & Biometrics -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title">App PIN Lock & Biometrics</span>
+              <span class="setting-desc" id="settings-lock-status-sub">Configure PIN, Fingerprint/Face & Auto-Lock Timer</span>
+            </div>
+            <button type="button" id="btn-open-smart-lock-from-settings" class="glass-btn-sm btn-save-action" style="padding: 7px 13px; display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="shield-lock" style="width: 14px; height: 14px;"></i>
+              <span id="btn-open-smart-lock-label">Setup Lock</span>
+            </button>
+            <input type="password" id="settings-pin-input" class="hidden" aria-hidden="true" />
+            <button type="button" id="btn-save-pin" class="hidden" aria-hidden="true"></button>
+          </div>
+
+          <!-- Link Krypton Web Device (QR Scanner) in Settings -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px; color: var(--accent-primary);">
+                <i data-lucide="scan-line" style="width: 15px; height: 15px;"></i>
+                <span>Link Krypton Web (QR Scanner)</span>
+              </span>
+              <span class="setting-desc">Scan QR code on Krypton Web to login instantly on PC</span>
+            </div>
+            <button type="button" id="btn-settings-open-qr" class="glass-btn-sm btn-save-action" style="padding: 7px 13px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="qr-code" style="width: 14px; height: 14px;"></i>
+              <span>Scan QR</span>
+            </button>
+          </div>
+
+          <!-- Active Devices & Session Management -->
+          <div class="setting-item theme-picker-block" id="device-sessions-card" style="gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div class="setting-text">
+                <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="smartphone" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+                  <span>Active Devices & Sessions</span>
+                </span>
+                <span class="setting-desc">Monitor logged-in devices & remotely terminate sessions</span>
+              </div>
+              <button type="button" id="btn-logout-other-devices" class="glass-btn-sm danger" style="padding: 5px 9px; font-size: 10.5px; white-space: nowrap;">Logout Others</button>
+            </div>
+            <div id="active-devices-list" class="active-devices-list"></div>
+          </div>
+
+          <!-- Blocked Users Manager -->
+          <div class="setting-item theme-picker-block" id="blocked-users-settings-card" style="gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div class="setting-text">
+                <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="user-x" style="width: 15px; height: 15px; color: var(--danger-color);"></i>
+                  <span>Blocked Users (<span id="blocked-users-count-badge">0</span>)</span>
+                </span>
+                <span class="setting-desc">Unblock users anytime — even if you deleted their chat</span>
+              </div>
+              <button type="button" id="btn-unblock-all-users" class="glass-btn-sm hidden" style="padding: 5px 9px; font-size: 10.5px; white-space: nowrap;">Unblock All</button>
+            </div>
+            <div id="settings-blocked-users-list" class="active-devices-list"></div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Obsidian Dark Mode</span>
+              <span class="setting-desc">Switch between Deep OLED Dark and Frosted Pearl Light</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-dark-mode" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Sound Effects</span>
+              <span class="setting-desc">Subtle WebAudio synthesizer cues for messages & calls</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-sound-fx" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item hidden" style="display: none !important;" aria-hidden="true">
+            <input type="checkbox" id="toggle-push-notifications" checked />
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Hide Global Lounge</span>
+              <span class="setting-desc">Completely hide public anonymous group feed</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-hide-global" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <!-- Call-Only Screenshot & Screen Recording Protection -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title" style="display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="shield-ban" style="width: 15px; height: 15px; color: var(--accent-primary);"></i>
+                <span>Block Capture on Calls Only</span>
+              </span>
+              <span class="setting-desc">Protect voice & video calls from screenshots and screen recording (Allowed in chats)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-anti-capture" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Online Presence Indicator</span>
+              <span class="setting-desc">Turn off to enter Ghost Mode (hide online status)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-online-presence" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div id="setting-item-install-pwa" class="hidden" style="display: none !important;" aria-hidden="true">
+            <button id="btn-settings-install-pwa" class="hidden"><span id="btn-settings-install-label"></span></button>
+            <span id="settings-install-desc" class="hidden"></span>
+          </div>
+
+          <!-- WhatsApp-Style In-App Update Feature -->
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--accent-primary);">App Update (Over-The-Air)</span>
+              <span class="setting-desc">Install latest Krypton APK update directly over current app</span>
+            </div>
+            <button id="btn-force-reload-app" class="glass-btn-sm btn-save-action" style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i>
+              <span>Update App</span>
+            </button>
+          </div>
+
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title">Feedback & Support</span>
+              <span class="setting-desc">Send bug reports, feedback or feature ideas</span>
+            </div>
+            <button id="btn-send-feedback" class="glass-btn-sm" style="padding: 6px 14px;">Feedback</button>
+          </div>
+
+          <div class="setting-item" style="padding-top: 10px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--danger-color);">Logout Account</span>
+              <span class="setting-desc">Disconnect session from this device</span>
+            </div>
+            <button id="btn-logout" class="glass-btn-sm danger" style="padding: 6px 14px;">Logout</button>
+          </div>
+
+          <div class="setting-item" id="setting-item-delete-acc" style="padding-top: 12px; border-top: 1px solid var(--glass-border-subtle);">
+            <div class="setting-text">
+              <span class="setting-title" style="color: var(--danger-color);">Delete Account Permanently</span>
+              <span class="setting-desc">Wipe all your messages, profile, and data forever</span>
+            </div>
+            <button type="button" id="btn-delete-account-perm" class="glass-btn-sm danger" style="padding: 6px 12px; font-weight: 700;">Delete</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Identity Login / Register Modal -->
+  <div id="auth-modal" class="glass-modal">
+    <div class="glass-card auth-card">
+      <div class="brand">
+        <div class="auth-logo-glow" style="padding: 0; overflow: hidden;">
+          <img src="icon-192.png?v=25000" alt="Krypton" style="width: 100%; height: 100%; object-fit: cover;" />
+        </div>
+        <h2 id="modal-title" style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Krypton</h2>
+        <p id="modal-desc" style="margin-bottom: 6px;">Next-Gen Instant Messenger</p>
+      </div>
+
+      <div class="input-group" style="margin-top: 10px;">
+        <label class="auth-field-label">YOUR USERNAME</label>
+        <div class="auth-input-wrap">
+          <i data-lucide="at-sign" class="auth-input-icon"></i>
+          <input type="text" id="username-input" placeholder="e.g. lucia" autocomplete="username" />
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top: 8px;">
+        <label class="auth-field-label">SECURE PASSWORD</label>
+        <div class="auth-input-wrap" style="position: relative;">
+          <i data-lucide="key-round" class="auth-input-icon"></i>
+          <input type="password" id="password-input" placeholder="Enter your password" autocomplete="current-password"
+            data-lpignore="true" style="padding-right: 42px !important;" />
+          <button type="button" id="btn-toggle-auth-password" class="pin-visibility-toggle" data-pin-target="password-input" aria-label="Show Password" title="Show / Hide Password" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: none; background: transparent; color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%;">
+            <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+          </button>
+        </div>
+        <span id="username-status" class="status-msg"></span>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="btn-login" class="glass-btn primary" style="width: 100%; padding: 13px;">
+          <span>Authenticate / Register</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Call Permission Modal -->
+  <div id="call-perm-modal" class="glass-modal hidden" style="z-index: 999999;">
+    <div class="glass-card call-card">
+      <div class="brand">
+        <div class="incoming-call-ring">
+          <i data-lucide="phone-incoming" class="brand-icon pulse"></i>
+        </div>
+        <h3 id="incoming-caller-title" style="margin-top: 10px;">Incoming Call</h3>
+        <p id="incoming-caller-desc" style="margin-top: 4px;">@user is calling you</p>
+      </div>
+      <div class="modal-actions" style="margin-top: 8px;">
+        <button id="btn-decline-call" class="glass-btn call-decline">Decline</button>
+        <button id="btn-accept-call" class="glass-btn call-accept">Accept Call</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Forward Message Modal -->
+  <div id="forward-msg-modal" class="glass-modal hidden" style="z-index: 9999997;">
+    <div class="glass-card" style="max-width: 410px; max-height: 82dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+      <div class="settings-pinned-header" style="padding: 14px 18px;">
+        <div class="brand-inline">
+          <div class="header-badge-icon">
+            <i data-lucide="forward" style="width: 17px; height: 17px;"></i>
+          </div>
+          <h3 style="font-size: 15.5px; font-weight: 800;">Forward Message To...</h3>
+        </div>
+        <button type="button" id="btn-close-forward-modal" class="icon-close-btn sm" title="Close">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <div style="padding: 10px 16px 6px 16px; border-bottom: 1px solid var(--glass-border-subtle);">
+        <div class="krypton-search-pill-box" style="height: 37px;">
+          <i data-lucide="search" class="krypton-search-pill-icon"></i>
+          <input type="text" id="forward-search-input" placeholder="Search friends or groups..." autocomplete="off" style="background:transparent; border:none; color:var(--text-main); width:100%; outline:none; font-size:13px;" />
+        </div>
+      </div>
+
+      <div id="forward-targets-list" class="settings-scroll-body" style="padding: 10px 14px; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0;"></div>
+
+      <div class="modal-actions" style="padding: 11px 16px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+        <button type="button" id="btn-cancel-forward-modal" class="glass-btn secondary">Cancel</button>
+        <button type="button" id="btn-confirm-forward-send" class="glass-btn primary">Forward Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WebRTC Call Screen -->
+  <div id="call-screen-overlay" class="glass-modal hidden" style="z-index: 999998;">
+    <div class="call-interface-box" id="call-interface-card">
+
+      <!-- Anti-Screenshot / Screen Recording Privacy Shield Overlay (Active on Calls Only) -->
+      <div id="call-capture-shield" class="call-capture-shield hidden">
+        <i data-lucide="shield-alert" style="width: 38px; height: 38px; color: var(--danger-color);"></i>
+        <h4>Screenshot & Screen Recording Blocked on Calls</h4>
+        <p>Call stream is protected by Krypton Privacy Shield.</p>
+      </div>
+
+      <div class="call-peer-info" id="call-peer-info-header">
+        <div class="avatar lg" id="call-avatar">?</div>
+        <div class="call-peer-text-stack">
+          <h3 id="call-peer-name">Calling...</h3>
+          <span id="call-status-badge">Connecting...</span>
+        </div>
+        <div class="call-peer-badges-row" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 2px;">
+          <span class="encryption-pill hidden" id="call-e2ee-lock-pill">
+            <i data-lucide="shield-check" style="width: 11px; height: 11px;"></i>
+            <span id="call-e2ee-code-text">Protected Call</span>
+          </span>
+          <span id="call-duration-timer" class="call-timer-pill hidden">00:00</span>
+        </div>
+        <div id="call-participants-chips" class="call-participants-chips hidden"></div>
+      </div>
+
+      <div class="video-grid hidden" id="video-streams-container" title="Tap the small video to swap main & PiP views">
+        <video id="remote-video" autoplay playsinline disablePictureInPicture controlsList="nodownload nofullscreen noremoteplayback"></video>
+        <div id="extra-remote-videos-grid" class="extra-remote-videos-grid hidden"></div>
+        <video id="local-video" autoplay playsinline muted disablePictureInPicture controlsList="nodownload nofullscreen noremoteplayback"></video>
+        <button type="button" id="btn-video-fullscreen-corner" class="video-fs-corner-btn" title="Toggle Full Screen Video View">
+          <i data-lucide="maximize-2" id="video-fs-corner-icon" style="width: 16px; height: 16px;"></i>
+        </button>
+      </div>
+
+      <audio id="remote-audio" autoplay></audio>
+      <div id="extra-remote-audios-container" class="hidden"></div>
+
+      <div class="call-action-bar">
+        <button id="btn-toggle-mic" class="call-tool-btn" title="Mute/Unmute Mic">
+          <i data-lucide="mic"></i>
+        </button>
+        <button id="btn-toggle-speaker" class="call-tool-btn" title="Toggle Speaker / Earpiece">
+          <i data-lucide="volume-1" id="speaker-btn-icon"></i>
+        </button>
+        <button id="btn-toggle-cam" class="call-tool-btn hidden" title="Toggle Camera">
+          <i data-lucide="video"></i>
+        </button>
+        <button id="btn-switch-cam" class="call-tool-btn hidden" title="Switch Front / Back Camera">
+          <i data-lucide="refresh-cw" id="switch-cam-icon"></i>
+        </button>
+        <button id="btn-call-add-member-bar" class="call-tool-btn" title="Add Another Member to Call">
+          <i data-lucide="user-plus"></i>
+        </button>
+        <button id="btn-end-call" class="call-tool-btn end-call" title="End Call">
+          <i data-lucide="phone-off"></i>
+        </button>
+      </div>
+
+      <div id="call-add-member-modal" class="glass-modal hidden" style="z-index: 9999999;">
+        <div class="glass-card" style="max-width: 390px; max-height: 78dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="settings-pinned-header" style="padding: 14px 18px;">
+            <div class="brand-inline">
+              <div class="header-badge-icon">
+                <i data-lucide="user-plus" style="width: 17px; height: 17px;"></i>
+              </div>
+              <h3 style="font-size: 15.5px; font-weight: 800;">Add Friend to Call</h3>
+            </div>
+            <button type="button" id="btn-close-call-add-modal" class="icon-close-btn sm" title="Close">
+              <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+
+          <div style="padding: 10px 16px 6px 16px; border-bottom: 1px solid var(--glass-border-subtle);">
+            <div class="krypton-search-pill-box" style="height: 37px;">
+              <i data-lucide="search" class="krypton-search-pill-icon"></i>
+              <input type="text" id="call-add-search-input" placeholder="Search connected friend..." autocomplete="off" style="background:transparent; border:none; color:var(--text-main); width:100%; outline:none; font-size:13px;" />
+            </div>
+          </div>
+
+          <div id="call-add-friends-list" class="settings-scroll-body" style="padding: 10px 14px; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Shell -->
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="glass-panel sidebar krypton-clean-sidebar" id="app-sidebar">
+
+      <!-- 1. Top Clean Brand Bar -->
+      <div class="krypton-top-brand-bar" id="sidebar-top-brand-bar">
+        <div class="krypton-brand-title-wrap" style="display: flex; align-items: center; gap: 9px;">
+          <img src="icon-192.png?v=25000" alt="Krypton" style="width: 28px; height: 28px; border-radius: 8px; object-fit: cover; border: 1px solid var(--accent-primary);" />
+          <div style="display: flex; align-items: baseline; gap: 7px; min-width: 0;">
+            <span class="krypton-brand-title">Krypton</span>
+            <span id="display-my-id" class="krypton-my-uid-sub">@user</span>
+          </div>
+        </div>
+
+        <div class="krypton-top-actions" style="position: relative;">
+          <button id="btn-top-qr-scanner" class="tool-btn" title="Scan QR to Link Krypton Web">
+            <i data-lucide="scan-line" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button id="btn-panic-lock" class="tool-btn" title="Instant App Lock">
+            <i data-lucide="lock" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button id="btn-quick-theme" class="tool-btn" title="Switch Accent Theme">
+            <i data-lucide="palette" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button id="btn-top-three-dots" class="tool-btn" title="More Options">
+            <i data-lucide="more-vertical" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <div id="top-main-dropdown-menu" class="krypton-top-dropdown-menu hidden">
+            <button type="button" id="top-menu-link-web" class="krypton-top-menu-item">
+              <i data-lucide="qr-code" style="width: 17px; height: 17px; color: var(--accent-primary);"></i>
+              <span>Link Web Device (Scan QR)</span>
+            </button>
+            <button type="button" id="top-menu-toggle-dark" class="krypton-top-menu-item">
+              <i data-lucide="moon" id="top-menu-dark-icon" style="width: 17px; height: 17px;"></i>
+              <span id="top-menu-dark-label">Obsidian Dark Mode: ON</span>
+            </button>
+            <button type="button" id="btn-open-create-group" class="krypton-top-menu-item">
+              <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+              <span>New Group</span>
+            </button>
+            <button type="button" id="top-menu-saved-msgs" class="krypton-top-menu-item">
+              <i data-lucide="bookmark" style="width: 17px; height: 17px;"></i>
+              <span>Saved Messages (@me)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden Legacy Hooks -->
+      <div class="user-profile hidden" aria-hidden="true">
+        <div class="avatar-wrap" id="sidebar-avatar-wrap"></div>
+        <div class="meta" id="sidebar-meta-wrap"></div>
+        <button id="btn-settings" class="hidden"></button>
+      </div>
+      <div class="nav-channels hidden" id="global-lounge-wrapper" aria-hidden="true">
+        <button class="nav-item" id="btn-global-room">
+          <span id="global-lounge-online-badge">1 Active</span>
+          <span id="global-lounge-subtext">Public lounge</span>
+        </button>
+      </div>
+
+      <!-- VIEW A: MAIN CHATS VIEW -->
+      <div id="sidebar-chats-view" class="sidebar-main-view">
+        <div class="direct-section krypton-pill-search-section">
+          <div class="krypton-search-pill-box">
+            <i data-lucide="search" class="krypton-search-pill-icon"></i>
+            <input type="text" id="peer-id-input" placeholder="Search Chats or @username..." enterkeyhint="search" autocomplete="off" />
+            <button id="btn-connect-peer" class="krypton-search-action-btn" title="Search / Add Friend">
+              <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i>
+            </button>
+          </div>
+          <div id="live-user-suggestions" class="live-user-suggestions hidden"></div>
+        </div>
+
+        <div id="pending-requests-section" class="requests-section hidden">
+          <div class="requests-header-row">
+            <div class="section-title" style="margin: 0; display: flex; align-items: center; gap: 5px;">
+              <i data-lucide="user-plus" style="width: 13px; height: 13px;"></i>
+              <span>REQUESTS (<span id="req-count">0</span>)</span>
+            </div>
+            <div class="req-tabs">
+              <button id="tab-req-incoming" class="req-tab-btn active">Incoming</button>
+              <button id="tab-req-sent" class="req-tab-btn">Sent</button>
+            </div>
+          </div>
+          <div class="request-list" id="requests-container"></div>
+        </div>
+
+        <div class="sidebar-conv-header">
+          <div class="sidebar-cat-tabs" id="sidebar-cat-tabs">
+            <button class="sidebar-tab-btn active" data-side-tab="all">All</button>
+            <button class="sidebar-tab-btn" data-side-tab="direct">Direct</button>
+            <button class="sidebar-tab-btn" data-side-tab="groups">Groups</button>
+          </div>
+          <span id="online-mesh-count" class="online-pill-badge">0 Online</span>
+        </div>
+
+        <div class="recent-chats krypton-clean-chat-list" id="chat-list"></div>
+      </div>
+
+      <!-- VIEW B: DEDICATED TELEGRAM-STYLE PROFILE DASHBOARD -->
+      <div id="sidebar-profile-dashboard" class="krypton-profile-dashboard hidden">
+        <div class="tg-profile-hero">
+          <div class="tg-profile-avatar-ring" id="tg-profile-avatar-click" title="Tap to view full-size photo">
+            <div class="avatar lg" id="tg-profile-main-avatar">?</div>
+            <button type="button" id="tg-btn-camera-badge" class="avatar-edit-badge" title="Upload New Profile Photo">
+              <i data-lucide="camera" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <h2 id="tg-profile-display-name" class="tg-profile-name">User</h2>
+          <span id="tg-profile-online-status" class="tg-profile-status">online</span>
+        </div>
+
+        <div class="tg-profile-action-tiles">
+          <button type="button" class="tg-action-tile" id="tg-tile-set-photo">
+            <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
+            <span>Set Photo</span>
+          </button>
+          <button type="button" class="tg-action-tile" id="tg-tile-edit-info">
+            <i data-lucide="pencil" style="width: 18px; height: 18px;"></i>
+            <span>Edit Info</span>
+          </button>
+          <button type="button" class="tg-action-tile" id="tg-tile-open-settings">
+            <i data-lucide="settings" style="width: 18px; height: 18px;"></i>
+            <span>Settings</span>
+          </button>
+        </div>
+
+        <div class="tg-profile-info-card">
+          <div class="tg-info-row">
+            <div class="tg-info-main">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span class="tg-info-value" id="tg-info-username-val">@username</span>
+                <div style="display: inline-flex; gap: 4px;">
+                  <button type="button" id="tg-btn-copy-username" class="tool-btn username-inline-btn" title="Copy Username">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" id="tg-btn-edit-username" class="tool-btn username-inline-btn" title="Change Username">
+                    <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+              <span class="tg-info-label">Username</span>
+            </div>
+
+            <div id="tg-username-editor-box" class="tg-inline-editor hidden">
+              <input type="text" id="tg-username-input" placeholder="Enter new @username" autocomplete="off" />
+              <div class="tg-inline-editor-btns">
+                <button type="button" id="tg-btn-save-username" class="glass-btn-sm btn-save-action">Save</button>
+                <button type="button" id="tg-btn-cancel-username" class="glass-btn-sm">Cancel</button>
+              </div>
+            </div>
+            <span id="tg-username-error" class="status-msg error" style="display: none; margin-top: 2px;"></span>
+          </div>
+
+          <div class="tg-info-divider"></div>
+
+          <div class="tg-info-row" id="tg-bio-section-row">
+            <div class="tg-info-main">
+              <span class="tg-info-value" id="tg-info-bio-val">Hey there! I am using Krypton.</span>
+              <span class="tg-info-label">Bio (Tap to edit your description)</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 6px;">
+              <input type="text" id="tg-bio-input" class="settings-bio-input" placeholder="Write your bio..." maxlength="80" autocomplete="off" />
+              <button type="button" id="tg-btn-save-bio" class="glass-btn-sm btn-save-action" style="padding: 6px 14px;">Save Bio</button>
+            </div>
+          </div>
+
+          <div class="tg-info-divider"></div>
+
+          <div class="tg-info-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="tg-btn-remove-photo" class="glass-btn-sm danger" style="flex: 1; text-align: center;">
+              Remove Profile Photo
+            </button>
+            <button type="button" id="tg-btn-open-vault" class="glass-btn-sm" style="flex: 1; text-align: center;">
+              Saved Messages (@me)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating AI Guide Action Button -->
+      <button id="btn-krypton-ai-orb" class="krypton-ai-circle-fab" title="Krypton AI Guide (Hinglish & English)">
+        <span class="ai-circle-glow-ring"></span>
+        <span class="ai-circle-icon">✨</span>
+      </button>
+
+      <!-- 4. Bottom Navigation Pill Dock -->
+      <nav class="krypton-bottom-nav-dock" id="krypton-bottom-nav" aria-label="Primary Navigation">
+        <button type="button" class="krypton-dock-item active" id="dock-btn-chats" data-dock-tab="chats">
+          <div class="dock-icon-wrap">
+            <i data-lucide="message-circle" style="width: 19px; height: 19px;"></i>
+            <span id="dock-chats-unread-badge" class="dock-unread-pill hidden">0</span>
+          </div>
+          <span class="dock-label">Chats</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-global" data-dock-tab="global">
+          <div class="dock-icon-wrap">
+            <i data-lucide="globe" style="width: 19px; height: 19px;"></i>
+            <span id="dock-global-badge" class="dock-mini-dot"></span>
+          </div>
+          <span class="dock-label">Global</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-settings" data-dock-tab="settings">
+          <div class="dock-icon-wrap">
+            <i data-lucide="settings" style="width: 19px; height: 19px;"></i>
+          </div>
+          <span class="dock-label">Setting</span>
+        </button>
+
+        <button type="button" class="krypton-dock-item" id="dock-btn-profile" data-dock-tab="profile">
+          <div class="dock-icon-wrap dock-avatar-holder">
+            <div class="avatar sm" id="my-avatar" style="width: 24px; height: 24px; font-size: 11px; border-width: 1.5px;">?</div>
+            <div class="online-dot visible" id="my-online-dot" style="width: 8px; height: 8px; right: -1px; bottom: -1px;"></div>
+          </div>
+          <span class="dock-label">Profile</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Chat Screen -->
+    <main class="glass-panel chat-screen" id="app-chat-screen">
+      <header class="chat-header">
+        <div class="chat-target" id="header-chat-target-box" style="cursor: pointer;" title="View Profile / Group Info">
+          <button id="btn-mobile-back" class="nav-back-btn" title="Back to Dashboard">
+            <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i>
+          </button>
+          <div class="avatar sm" id="header-chat-avatar" title="Click to View Full Profile Picture">?</div>
+          <div class="header-indicator-wrap">
+            <div class="status-indicator" id="header-status-indicator"></div>
+          </div>
+          <div class="target-text-wrap">
+            <h3 id="current-room-title">Global Anonymous Lounge</h3>
+            <span id="current-room-subtitle" class="room-subtitle">Online</span>
+          </div>
+        </div>
+
+        <!-- Header Controls -->
+        <div class="chat-controls">
+          <button id="btn-group-add-member" class="tool-btn hidden" title="Add Member to Group (Owner Only)">
+            <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <button id="btn-toggle-chat-search" class="tool-btn" title="Search Messages (Ctrl+F)">
+            <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <div id="call-buttons-group" class="call-controls-group hidden">
+            <button id="btn-start-voice" class="tool-btn" title="Start Voice Call">
+              <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
+            </button>
+            <button id="btn-start-video" class="tool-btn" title="Start Video Call">
+              <i data-lucide="video" style="width: 18px; height: 18px;"></i>
+            </button>
+          </div>
+
+          <div class="header-menu-wrap" style="position: relative;">
+            <button id="btn-header-menu" class="tool-btn" title="Chat Options">
+              <i data-lucide="more-vertical" style="width: 18px; height: 18px;"></i>
+            </button>
+            <div id="header-dropdown-menu" class="contact-dropdown-menu hidden"
+              style="position: absolute !important; top: 42px !important; right: 0 !important; left: auto !important; min-width: 210px !important; z-index: 999999 !important;">
+              <div class="menu-sub-header" id="menu-timer-title">Disappearing Timer</div>
+              <select id="ttl-select" class="dropdown-styled-select">
+                <option value="0">Off (Permanent)</option>
+                <option value="-1">Burn After Seen (10s)</option>
+                <option value="3600">1 Hour</option>
+                <option value="86400">24 Hours</option>
+                <option value="604800">7 Days</option>
+                <option value="2592000">1 Month</option>
+              </select>
+
+              <button id="btn-clear-chat" class="contact-dropdown-item danger" style="margin-top: 6px;">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                <span>Clear Both Sides</span>
+              </button>
+
+              <button id="btn-clear-global-for-me" class="contact-dropdown-item danger" style="margin-top: 6px;">
+                <i data-lucide="eye-off" style="width: 14px; height: 14px;"></i>
+                <span>Clear Feed For Me</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Message Category Filter Pills Bar -->
+      <div class="chat-category-bar" id="chat-category-bar">
+        <button class="cat-filter-pill active" data-filter="all">All</button>
+        <button class="cat-filter-pill" data-filter="media"><i data-lucide="image" class="pill-inline-svg"></i><span>Photos</span></button>
+        <button class="cat-filter-pill" id="cat-pill-voice" data-filter="voice"><i data-lucide="mic" class="pill-inline-svg"></i><span>Voice</span></button>
+        <button class="cat-filter-pill" data-filter="files"><i data-lucide="file-text" class="pill-inline-svg"></i><span>Files</span></button>
+        <button class="cat-filter-pill" data-filter="links"><i data-lucide="link-2" class="pill-inline-svg"></i><span>Links</span></button>
+      </div>
+
+      <!-- In-Chat Search Bar Drawer -->
+      <div id="in-chat-search-bar" class="in-chat-search-bar hidden">
+        <i data-lucide="search" style="width: 15px; height: 15px; color: var(--text-dim);"></i>
+        <input type="text" id="in-chat-search-input" placeholder="Filter messages in this room..." autocomplete="off" />
+        <span id="in-chat-search-count" class="search-match-pill"></span>
+        <button id="btn-close-chat-search" class="icon-close-btn sm" title="Close Search">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- Multi-Pinned Message Banner in Room (Supports Multiple Pins with Counter & Cycling) -->
+      <div id="pinned-message-banner" class="pinned-msg-banner hidden">
+        <i data-lucide="pin" style="width: 14px; height: 14px; color: var(--accent-primary); flex-shrink: 0;"></i>
+        <div class="pinned-msg-content" id="pinned-msg-jump">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="pinned-msg-label" id="pinned-msg-label-counter">PINNED MESSAGE</span>
+          </div>
+          <span id="pinned-msg-text" class="pinned-msg-snippet">Message...</span>
+        </div>
+        <button id="btn-cycle-pinned-msg" class="icon-close-btn sm hidden" title="Next Pinned Message" style="margin-right: 2px;">
+          <i data-lucide="chevron-down" style="width: 13px; height: 13px;"></i>
+        </button>
+        <button id="btn-unpin-msg" class="icon-close-btn sm" title="Unpin Current Message">
+          <i data-lucide="x" style="width: 13px; height: 13px;"></i>
+        </button>
+      </div>
+
+      <!-- Message Feed -->
+      <div class="message-feed" id="message-container"></div>
+
+      <!-- Floating Scroll-to-Bottom Button -->
+      <button id="btn-scroll-bottom" class="scroll-bottom-btn hidden" title="Scroll to latest">
+        <i data-lucide="chevron-down" style="width: 18px; height: 18px;"></i>
+      </button>
+
+      <!-- WhatsApp-Style Emoji Palette -->
+      <div id="emoji-palette" class="glass-palette whatsapp-emoji-drawer hidden">
+        <div class="emoji-drawer-top">
+          <div class="emoji-search-wrap">
+            <i data-lucide="search" style="width: 14px; height: 14px; color: var(--text-dim); flex-shrink: 0;"></i>
+            <input type="text" id="emoji-search-input" placeholder="Search emojis (e.g. laugh, heart, fire, party)..." autocomplete="off" />
+          </div>
+          <button type="button" id="btn-close-emoji-drawer" class="icon-close-btn sm" title="Close Emojis">
+            <i data-lucide="x" style="width: 13px; height: 13px;"></i>
+          </button>
+        </div>
+
+        <div class="emoji-cat-tabs" id="emoji-cat-tabs">
+          <button type="button" class="emoji-cat-btn active" data-ecat="all" title="All Emojis">All</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="recent" title="Recently Used">🕒</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="smileys" title="Smileys & Faces">😀</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="gestures" title="Hands & Gestures">👋</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="hearts" title="Hearts & Love">❤️</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="animals" title="Animals & Nature">🦁</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="food" title="Food & Drinks">🍕</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="activities" title="Celebration, Sports & Objects">🎉</button>
+          <button type="button" class="emoji-cat-btn" data-ecat="symbols" title="Symbols, Flags & Cyber">🔥</button>
+        </div>
+
+        <div class="emoji-grid-scroll" id="emoji-grid-scroll">
+          <div class="emoji-grid" id="whatsapp-emoji-grid"></div>
+        </div>
+      </div>
+
+      <!-- Corner Attachment & Tools Hub Popover Menu -->
+      <div id="attach-hub-menu" class="attach-hub-popover hidden">
+        <div class="hub-viewmode-bar">
+          <span class="hub-viewmode-title">VIEW MODE (MEDIA / FILES / SPOILER)</span>
+          <div class="hub-viewmode-pills" id="hub-viewmode-pills">
+            <button type="button" class="viewmode-pill active" data-vmode="normal" title="Normal Permanent View">Standard</button>
+            <button type="button" class="viewmode-pill" data-vmode="once" title="View Once: Deletes immediately after receiver opens & closes">1x View</button>
+            <button type="button" class="viewmode-pill" data-vmode="10s" title="Auto-destroys 10 seconds after receiver reveals/opens">10s Burn</button>
+          </div>
+        </div>
+
+        <button id="hub-btn-emoji" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(245, 158, 11, 0.16); color: #fbbf24;">
+            <i data-lucide="smile" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Emoji Tray</span>
+        </button>
+        <button id="hub-btn-image" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(14, 165, 233, 0.16); color: #38bdf8;">
+            <i data-lucide="image" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Photo</span>
+        </button>
+        <button id="hub-btn-file" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(168, 85, 247, 0.16); color: #c084fc;">
+            <i data-lucide="paperclip" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span>Document / File</span>
+        </button>
+        <button id="hub-btn-spoiler" class="attach-hub-item">
+          <div class="hub-icon-circle" style="background: rgba(244, 63, 94, 0.16); color: #fb7185;">
+            <i data-lucide="eye-off" style="width: 18px; height: 18px;"></i>
+          </div>
+          <span id="hub-spoiler-label">Spoiler Blur: OFF</span>
+        </button>
+      </div>
+
+      <!-- Hidden File Inputs -->
+      <input type="file" id="image-file-input" accept="image/*" style="display: none;" />
+      <input type="file" id="doc-file-input" accept=".pdf,.zip,.txt,.json,.md,.csv,.py,.js,.html,.css,.doc,.docx" style="display: none;" />
+
+      <!-- Dynamic Smart Friend Request Banner -->
+      <div id="chat-lock-banner" class="lock-banner hidden">
+        <div class="lock-banner-info">
+          <i data-lucide="shield-alert" id="lock-banner-icon" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+          <span id="lock-banner-text">Friend request required to unlock chat.</span>
+        </div>
+        <div id="lock-banner-actions" class="lock-banner-actions">
+          <button id="btn-banner-send-req" class="glass-btn-sm btn-save-action">Send Friend Request</button>
+        </div>
+      </div>
+
+      <!-- Active Reply Preview Bar -->
+      <div id="reply-preview-bar" class="reply-preview-bar hidden">
+        <div class="reply-preview-accent"></div>
+        <div class="reply-preview-text">
+          <span id="reply-preview-sender" class="reply-preview-user">@user</span>
+          <span id="reply-preview-snippet" class="reply-preview-msg">Message snippet...</span>
+        </div>
+        <button id="btn-cancel-reply" class="icon-close-btn sm" title="Cancel Reply">
+          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+
+      <!-- TELEGRAM-STYLE UNIFIED PILL INPUT DASHBOARD (Ref Images 4 & 5:
+           Left = Emoji Icon inside pill, Middle = Message Input, Right inside pill = Paperclip/Plus Hub,
+           Right Blue/Accent Circle = Mic when empty, morphs smoothly into Send Plane when typing!) -->
+      <footer class="input-bar tg-unified-input-bar" id="chat-input-bar">
+        <div class="tg-input-pill-shell" id="tg-input-pill-shell">
+          <button type="button" id="btn-tg-emoji-left" class="tg-pill-icon-btn" title="Emojis">
+            <i data-lucide="smile" style="width: 22px; height: 22px;"></i>
+          </button>
+
+          <span id="active-vmode-badge" class="active-vmode-indicator hidden" title="Click to reset to Standard View">1x View</span>
+
+          <div id="voice-recording-banner" class="voice-recording-live-pill hidden">
+            <div class="recording-pulse-dot"></div>
+            <span id="recording-timer-badge">0:00</span>
+            <span class="recording-release-hint">Release to send voice note...</span>
+          </div>
+
+          <input type="text" id="chat-input" placeholder="Message" autocomplete="off" />
+
+          <button type="button" id="btn-attach-hub" class="tg-pill-icon-btn attach-plus-btn" title="Attach Photo, File, View-Once or Spoiler">
+            <i data-lucide="paperclip" style="width: 20px; height: 20px;"></i>
+          </button>
+        </div>
+
+        <!-- Dynamic Right Circle Button: Mic when input is empty, Send Plane when typing -->
+        <div class="tg-action-circle-wrap">
+          <button type="button" id="btn-record-audio" class="mic-hold-btn tg-circle-action-btn" title="Hold to Record Voice, Release to Send">
+            <i data-lucide="mic" style="width: 20px; height: 20px; pointer-events: none;"></i>
+          </button>
+
+          <button type="button" id="btn-send" class="send-btn tg-circle-action-btn tg-btn-hidden" title="Send Message">
+            <i data-lucide="send" style="width: 19px; height: 19px; margin-left: 1px;"></i>
+          </button>
+        </div>
+      </footer>
+    </main>
+
+  </div>
+
+  <script src="app.js?v=25000"></script>
+
+  <!-- KRYPTON v25000 PART 1 MASTER PATCH:
+       1. Remove Security Subtitles ("Encrypted Peer-to-Peer" / "AES-256 Encrypted") -> Show Online / Active / Typing / Offline
+       2. Fix Chronological Message Order (Interleaved by timestamp, never split into all-left then all-right blocks)
+       3. Fix Persistent WhatsApp Ticks (Double Tick ✓✓ / Blue Tick never downgrades to single tick ✓ when user goes offline)
+       4. Telegram-Style Unified Input Pill (Left Emoji, Center Input, Right Paperclip, Morphing Mic <-> Send Circle Button)
+       5. Fix White Flash / Jump when Mobile Keyboard Opens/Closes on Send or Back -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("./sw.js")
+          .then((reg) => reg.update())
+          .catch((err) => console.error("PWA Service Worker failed:", err));
+      });
+    }
+
+    (function () {
+      const GITHUB_APK_RELEASE_URL = "https://github.com/kisanraj73199-sudo/krypton-app/releases/latest/download/krypton.apk";
+
+      // =========================================================================
+      // FIX 1: REMOVE SECURITY TEXT UNDER USERNAMES IN HEADER & RECENT CHATS LIST
+      // =========================================================================
+      let lastSeenMap = JSON.parse(localStorage.getItem("krypton_peer_last_seen") || "{}");
+      let deliveredMsgIdsMap = JSON.parse(localStorage.getItem("krypton_delivered_msg_ids") || "{}");
+
+      function getCleanPeerStatusText(peerUsername) {
+        const p = (peerUsername || "").toLowerCase();
+        if (!p) return "Offline";
+        if (p === (myUsername || "").toLowerCase()) return "Message yourself • Saved Notes";
+        if (peerRealtimeStatus && peerRealtimeStatus[p] === "typing") return "typing...";
+        if (peerRealtimeStatus && peerRealtimeStatus[p] === "recording") return "recording voice...";
+        const isOnline = onlineUsersList && onlineUsersList.has(p) && userSettings.onlinePresence;
+        if (isOnline) {
+          lastSeenMap[p] = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          localStorage.setItem("krypton_peer_last_seen", JSON.stringify(lastSeenMap));
+          return "Online • Active";
+        }
+        return lastSeenMap[p] ? `Last seen at ${lastSeenMap[p]}` : "Offline";
+      }
+
+      // Override updateHeaderStatus so it NEVER displays "Encrypted Peer-to-Peer" or "AES-256 Encrypted Mesh"
+      const origUpdateHeaderStatus = window.updateHeaderStatus;
+      window.updateHeaderStatus = function () {
+        if (typeof origUpdateHeaderStatus === "function") {
+          origUpdateHeaderStatus();
+        }
+        const subtitleEl = document.getElementById("current-room-subtitle");
+        if (!subtitleEl) return;
+
+        if (currentRoom === "global") {
+          const totalGlobalOnline = (onlineUsersList ? onlineUsersList.size : 0) + (userSettings.onlinePresence ? 1 : 0);
+          subtitleEl.textContent = `${totalGlobalOnline} Active Now`;
+        } else if (typeof isSelfRoom === "function" && isSelfRoom(currentRoom)) {
+          subtitleEl.textContent = "Personal Cloud • Saved Messages";
+        } else if (typeof isGroupRoom === "function" && isGroupRoom(currentRoom)) {
+          const grp = (savedGroups && savedGroups[currentRoom]) || { members: [], owner: "admin" };
+          const canSee = (typeof isCurrentGroupOwner === "function" && isCurrentGroupOwner(currentRoom)) || grp.showMembersToAll !== false;
+          subtitleEl.textContent = canSee
+            ? `${(grp.members || []).length} members • Admin: @${grp.owner || "admin"}`
+            : `Admin: @${grp.owner || "admin"}`;
+        } else if (currentPeerUser) {
+          subtitleEl.textContent = getCleanPeerStatusText(currentPeerUser);
+        }
+      };
+
+      // Clean any "AES-256 Encrypted" text inside #chat-list after renderPeerList runs
+      const origRenderPeerList = window.renderPeerList;
+      window.renderPeerList = function (filterText = "") {
+        if (typeof origRenderPeerList === "function") {
+          origRenderPeerList(filterText);
+        }
+        const listEl = document.getElementById("chat-list");
+        if (!listEl) return;
+
+        listEl.querySelectorAll(".contact-card").forEach((card) => {
+          const peer = card.dataset.peer;
+          const previewEl = card.querySelector(".contact-preview-text");
+          if (!previewEl) return;
+          const txt = (previewEl.textContent || "").trim();
+          if (
+            txt === "AES-256 Encrypted" ||
+            txt === "Encrypted Peer-to-Peer" ||
+            txt === "AES-256 Encrypted Friend"
+          ) {
+            if (peer) {
+              previewEl.textContent = getCleanPeerStatusText(peer);
+            } else {
+              previewEl.textContent = "Offline";
+            }
+          }
+        });
+      };
+
+      // =========================================================================
+      // FIX 2: STRICT CHRONOLOGICAL MESSAGE INTERLEAVING (NO SPLIT BLOCKS!)
+      // =========================================================================
+      function sortMessageContainerChronologically() {
+        const container = document.getElementById("message-container");
+        if (!container) return;
+        const rows = Array.from(container.querySelectorAll(".message-row"));
+        if (rows.length <= 1) return;
+
+        // Check if any row is out of timestamp order
+        let needsSort = false;
+        for (let i = 1; i < rows.length; i++) {
+          const prevTs = parseInt(rows[i - 1].dataset.msgTs || "0", 10);
+          const curTs = parseInt(rows[i].dataset.msgTs || "0", 10);
+          if (prevTs > 0 && curTs > 0 && curTs < prevTs) {
+            needsSort = true;
+            break;
+          }
+        }
+
+        if (needsSort) {
+          rows.sort((a, b) => {
+            const ta = parseInt(a.dataset.msgTs || "0", 10);
+            const tb = parseInt(b.dataset.msgTs || "0", 10);
+            return ta - tb;
+          });
+          const frag = document.createDocumentFragment();
+          rows.forEach((r) => frag.appendChild(r));
+          container.appendChild(frag);
+        }
+      }
+
+      // Stamp every created message node with its exact millisecond timestamp & persistent tick state
+      const origCreateMessageNode = window.createMessageNode;
+      window.createMessageNode = async function (msg, rawTextOverride) {
+        const node = await origCreateMessageNode(msg, rawTextOverride);
+        if (!node || !msg) return node;
+
+        const ts = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
+        node.dataset.msgTs = String(isNaN(ts) ? Date.now() : ts);
+        node.dataset.createdAtIso = msg.created_at || new Date().toISOString();
+
+        // =====================================================================
+        // FIX 3: PERSISTENT WHATSAPP TICKS (NEVER REVERT ✓✓ TO ✓ WHEN OFFLINE)
+        // =====================================================================
+        const msgId = String(msg.id || "");
+        const tickEl = node.querySelector(".msg-status-ticks");
+        if (tickEl) {
+          const isOnlineNow = currentPeerUser && onlineUsersList && onlineUsersList.has(currentPeerUser.toLowerCase());
+          const isReadNow = msg.is_read === true || tickEl.dataset.persistentRead === "true";
+
+          if (isReadNow) {
+            deliveredMsgIdsMap[msgId] = "read";
+          } else if (isOnlineNow || deliveredMsgIdsMap[msgId] === "delivered") {
+            if (deliveredMsgIdsMap[msgId] !== "read") {
+              deliveredMsgIdsMap[msgId] = "delivered";
+            }
+          }
+
+          const savedState = deliveredMsgIdsMap[msgId];
+          if (savedState === "read" || isReadNow) {
+            tickEl.className = "msg-status-ticks read";
+            tickEl.textContent = "✓✓";
+            tickEl.dataset.persistentRead = "true";
+            tickEl.dataset.persistentDelivered = "true";
+          } else if (savedState === "delivered" || isOnlineNow) {
+            tickEl.className = "msg-status-ticks delivered";
+            tickEl.textContent = "✓✓";
+            tickEl.dataset.persistentDelivered = "true";
+          } else {
+            tickEl.className = "msg-status-ticks";
+            tickEl.textContent = "✓";
+          }
+        }
+
+        return node;
+      };
+
+      // Override update1on1MessageTicks so going offline NEVER downgrades ✓✓ back to single ✓!
+      window.update1on1MessageTicks = function (isRead) {
+        if (currentRoom === "global" || !currentPeerUser) return;
+        const isPeerOnline = onlineUsersList && onlineUsersList.has(currentPeerUser.toLowerCase());
+        const rows = document.querySelectorAll("#message-container .message-row.sent");
+
+        rows.forEach((row) => {
+          const msgId = (row.id || "").replace("msg-row-", "");
+          const el = row.querySelector(".msg-status-ticks");
+          if (!el) return;
+
+          if (isRead || el.dataset.persistentRead === "true" || deliveredMsgIdsMap[msgId] === "read") {
+            el.className = "msg-status-ticks read";
+            el.textContent = "✓✓";
+            el.dataset.persistentRead = "true";
+            el.dataset.persistentDelivered = "true";
+            if (msgId) deliveredMsgIdsMap[msgId] = "read";
+          } else if (isPeerOnline || el.dataset.persistentDelivered === "true" || deliveredMsgIdsMap[msgId] === "delivered") {
+            el.className = "msg-status-ticks delivered";
+            el.textContent = "✓✓";
+            el.dataset.persistentDelivered = "true";
+            if (msgId && deliveredMsgIdsMap[msgId] !== "read") {
+              deliveredMsgIdsMap[msgId] = "delivered";
+            }
+          } else {
+            el.className = "msg-status-ticks";
+            el.textContent = "✓";
+          }
+        });
+
+        try {
+          localStorage.setItem("krypton_delivered_msg_ids", JSON.stringify(deliveredMsgIdsMap));
+        } catch (e) {}
+      };
+
+      // Hook renderMessage & joinRoom so messages always stay strictly interleaved by timestamp
+      const origRenderMessage = window.renderMessage;
+      window.renderMessage = async function (msg) {
+        await origRenderMessage(msg);
+        sortMessageContainerChronologically();
+      };
+
+      const origJoinRoom = window.joinRoom;
+      window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+        await origJoinRoom(roomId, displayName, pushHistory);
+        sortMessageContainerChronologically();
+        updateHeaderStatus();
+        syncTelegramInputButtonsState();
+      };
+
+      // =========================================================================
+      // FIX 4: TELEGRAM-STYLE UNIFIED INPUT BAR (LEFT EMOJI, RIGHT PAPERCLIP,
+      //        DYNAMIC MIC <-> SEND CIRCLE BUTTON MORPH)
+      // =========================================================================
+      function syncTelegramInputButtonsState() {
+        const chatInp = document.getElementById("chat-input");
+        const btnMic = document.getElementById("btn-record-audio");
+        const btnSend = document.getElementById("btn-send");
+        if (!chatInp || !btnMic || !btnSend) return;
+
+        const hasText = chatInp.value.trim().length > 0;
+        const isGlobal = currentRoom === "global";
+
+        if (hasText || isGlobal) {
+          btnSend.classList.remove("tg-btn-hidden");
+          btnMic.classList.add("tg-btn-hidden");
+        } else {
+          btnSend.classList.add("tg-btn-hidden");
+          btnMic.classList.remove("tg-btn-hidden");
+        }
+      }
+
+      function bindTelegramInputBarControls() {
+        const chatInp = document.getElementById("chat-input");
+        const btnEmojiLeft = document.getElementById("btn-tg-emoji-left");
+        const emojiPal = document.getElementById("emoji-palette");
+        const attachMenu = document.getElementById("attach-hub-menu");
+        const btnAttach = document.getElementById("btn-attach-hub");
+        const btnSend = document.getElementById("btn-send");
+
+        if (chatInp && !chatInp.dataset.tgMorphBound) {
+          chatInp.dataset.tgMorphBound = "true";
+          chatInp.addEventListener("input", syncTelegramInputButtonsState);
+          chatInp.addEventListener("focus", syncTelegramInputButtonsState);
+        }
+
+        // Left Emoji Icon opens/closes Emoji Tray directly
+        if (btnEmojiLeft && emojiPal && !btnEmojiLeft.dataset.tgBound) {
+          btnEmojiLeft.dataset.tgBound = "true";
+          btnEmojiLeft.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (attachMenu) attachMenu.classList.add("hidden");
+            if (btnAttach) btnAttach.classList.remove("active");
+            if (typeof renderWhatsAppEmojiGrid === "function") renderWhatsAppEmojiGrid();
+            emojiPal.classList.toggle("hidden");
+          });
+        }
+
+        // Keep keyboard open or smoothly transition on Send click without white flash
+        if (btnSend && !btnSend.dataset.tgSendBound) {
+          btnSend.dataset.tgSendBound = "true";
+          btnSend.addEventListener("click", () => {
+            setTimeout(syncTelegramInputButtonsState, 20);
+          });
+        }
+      }
+
+      // Also update button state whenever an emoji is inserted from the tray
+      const origInsertEmoji = window.insertEmojiIntoChatInput;
+      if (typeof origInsertEmoji === "function") {
+        window.insertEmojiIntoChatInput = function (emo) {
+          origInsertEmoji(emo);
+          syncTelegramInputButtonsState();
+        };
+      }
+
+      // =========================================================================
+      // FIX 5: PREVENT WHITE FLASH WHEN MOBILE KEYBOARD CLOSES ON SEND / BACK
+      // =========================================================================
+      function bindSmoothViewportKeyboardHandler() {
+        document.documentElement.style.backgroundColor = "#06080f";
+        document.body.style.backgroundColor = "#06080f";
+
+        if (window.visualViewport) {
+          const onViewportResize = () => {
+            const vv = window.visualViewport;
+            const appLayout = document.querySelector(".app-layout");
+            if (appLayout && window.innerWidth <= 900) {
+              appLayout.style.height = vv.height + "px";
+            }
+            const feed = document.getElementById("message-container");
+            if (feed && document.body.classList.contains("mobile-chat-active")) {
+              const dist = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+              if (dist < 220) {
+                feed.scrollTop = feed.scrollHeight;
+              }
+            }
+          };
+          window.visualViewport.addEventListener("resize", onViewportResize);
+          window.visualViewport.addEventListener("scroll", onViewportResize);
+        }
+      }
+
+      // =========================================================================
+      // NATIVE APK HELPERS (BIOMETRIC, DP PICKER, QR SCANNER, OTA UPDATER)
+      // =========================================================================
+      let nativeBioEnabled = localStorage.getItem("krypton_native_bio_enabled") === "true";
+
+      window.hasAnyLockMethodConfigured = function () {
+        return Boolean((myAppPin && myAppPin.length >= 4) || nativeBioEnabled || biometricCredId);
+      };
+
+      window.onKryptonNativeBiometricResult = function (success) {
+        if (success) {
+          const overlay = document.getElementById("app-lock-overlay");
+          if (overlay) overlay.classList.add("hidden");
+          if (typeof showToast === "function") showToast("Unlocked with Device Biometrics!", "success", 1800);
+        }
+      };
+
+      function bindDpUploadTriggers() {
+        const dpBtnIds = [
+          "tg-btn-camera-badge",
+          "tg-tile-set-photo",
+          "btn-change-avatar",
+          "btn-upload-avatar-trigger"
+        ];
+        dpBtnIds.forEach((id) => {
+          const btn = document.getElementById(id);
+          if (btn && !btn.dataset.nativeDpBound) {
+            btn.dataset.nativeDpBound = "true";
+            btn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.KryptonNative && typeof window.KryptonNative.requestMediaPermissions === "function") {
+                window.KryptonNative.requestMediaPermissions();
+              }
+              const avatarInput = document.getElementById("avatar-file-input");
+              if (avatarInput) {
+                avatarInput.removeAttribute("capture");
+                avatarInput.value = "";
+                avatarInput.click();
+              }
+            }, true);
+          }
+        });
+      }
+
+      function initPart1Fixes() {
+        bindTelegramInputBarControls();
+        syncTelegramInputButtonsState();
+        bindSmoothViewportKeyboardHandler();
+        bindDpUploadTriggers();
+        updateHeaderStatus();
+        renderPeerList();
+        if (window.lucide) lucide.createIcons();
+      }
+
+      document.addEventListener("DOMContentLoaded", initPart1Fixes);
+      setTimeout(initPart1Fixes, 600);
+    })();
+  </script>
+</body>
+
+</html>
