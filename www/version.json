@@ -1,11 +1,11 @@
 {
-  "version": "2.5.146",
-  "apkVersion": "2.5.146",
-  "versionCode": 146,
-  "featureVersion": "v60000",
-  "commit": "362bdc6",
-  "timestamp": 1793805074,
-  "notes": "Krypton v60000: Clean production Android repository with native in-app APK updater  ",
+  "version": "2.5.147",
+  "apkVersion": "2.5.147",
+  "versionCode": 147,
+  "featureVersion": "v61000",
+  "commit": "d10b5a1",
+  "timestamp": 1793851567,
+  "notes": "Krypton v61000: Add Shared Media, Files & Links gallery modal and double-tap heart burst  ",
   "repo": "kisanraj73199-sudo/krypton-app",
   "apkUrl": "https://github.com/kisanraj73199-sudo/krypton-app/releases/download/latest/krypton.apk"
 }
