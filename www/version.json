@@ -1,11 +1,11 @@
 {
-  "version": "2.5.147",
-  "apkVersion": "2.5.147",
-  "versionCode": 147,
+  "version": "2.5.148",
+  "apkVersion": "2.5.148",
+  "versionCode": 148,
   "featureVersion": "v61000",
-  "commit": "d10b5a1",
-  "timestamp": 1793851567,
-  "notes": "Krypton v61000: Add Shared Media, Files & Links gallery modal and double-tap heart burst  ",
+  "commit": "079a5a4",
+  "timestamp": 1793853141,
+  "notes": "Krypton v61500: Force-lock persistent APK keystore with git add -f to eliminate package conflict  ",
   "repo": "kisanraj73199-sudo/krypton-app",
   "apkUrl": "https://github.com/kisanraj73199-sudo/krypton-app/releases/download/latest/krypton.apk"
 }
