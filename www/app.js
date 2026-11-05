@@ -22062,52 +22062,79 @@ initIdentity();
   setTimeout(injectPollHubButton, 600);
 })();
 // =========================================================================
-// 53. FEATURE v69000 (WHATSAPP-STYLE CONTEXT MENU SMART VIEWPORT CLAMP):
-//     RE-CALCULATES MENU POSITION AFTER ALL EXTRA ITEMS (INFO, STAR,
-//     TRANSLATE, FORWARD) ARE INJECTED SO "DELETE MESSAGE" NEVER CLIPS!
+// 53. FEATURE v70000 (TRUE WHATSAPP-STYLE BOTTOM-UP MENU ANCHORING):
+//     USES UN-SCALED offsetHeight/scrollHeight & ANCHORS VIA `style.bottom`
+//     ABOVE THE INPUT BAR SO "DELETE MESSAGE" IS ALWAYS 100% VISIBLE!
 // =========================================================================
 
 (function () {
-  function clampContextMenuInsideScreen(clientX, clientY) {
+  function positionWhatsAppContextMenu(msgId, clientX, clientY) {
     const menu = document.querySelector(".whatsapp-msg-context-menu");
     if (!menu) return;
 
+    const row = msgId ? document.getElementById("msg-row-" + msgId) : null;
+    const bubble = row ? row.querySelector(".bubble-content") : null;
+    const inputBar = document.getElementById("chat-input-bar");
+
     const vw = window.innerWidth;
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const margin = 14;
+    const inputBarH = inputBar ? inputBar.offsetHeight || 60 : 60;
+    const margin = 12;
 
-    const rect = menu.getBoundingClientRect();
-    const menuW = rect.width || 248;
-    const menuH = rect.height || 360;
+    // CRITICAL: Use offsetWidth / scrollHeight (immune to CSS scale(0.88) animation!)
+    const menuW = menu.offsetWidth || 244;
+    const menuH = Math.max(menu.offsetHeight || 0, menu.scrollHeight || 0, 340);
 
-    let left = typeof clientX === "number" && clientX > 0 ? clientX - menuW / 2 : (vw - menuW) / 2;
-    let top = typeof clientY === "number" && clientY > 0 ? clientY - 20 : (vh - menuH) / 2;
+    let bRect = bubble ? bubble.getBoundingClientRect() : null;
 
-    // If menu goes below bottom edge (where Delete Message is), shift it cleanly upward!
-    if (top + menuH > vh - margin) {
-      top = vh - menuH - margin;
+    // 1. Horizontal position: align near bubble (left for received, right for sent)
+    let left = (vw - menuW) / 2;
+    if (bRect) {
+      const isSent = row && row.classList.contains("sent");
+      left = isSent ? bRect.right - menuW : bRect.left;
+    } else if (typeof clientX === "number" && clientX > 0) {
+      left = clientX - menuW / 2;
     }
-    if (top < margin) {
-      top = margin;
-    }
-    if (left + menuW > vw - margin) {
-      left = vw - menuW - margin;
-    }
-    if (left < margin) {
-      left = margin;
-    }
-
+    left = Math.max(margin, Math.min(vw - menuW - margin, left));
     menu.style.left = `${Math.round(left)}px`;
-    menu.style.top = `${Math.round(top)}px`;
+
+    // 2. Vertical position: Check if message is in the lower half or if downward menu would touch the input bar
+    const anchorY = bRect ? bRect.top : typeof clientY === "number" && clientY > 0 ? clientY : vh / 2;
+    const bottomSafeLimit = vh - inputBarH - 10;
+
+    if (anchorY + menuH > bottomSafeLimit || anchorY > vh * 0.42) {
+      // WHATSAPP LOWER-MESSAGE MODE: Anchor from BOTTOM right above the input bar / message!
+      menu.classList.add("open-upward");
+      menu.style.top = "auto";
+
+      let bottomOffset = inputBarH + 12;
+      if (bRect) {
+        const distFromBottom = vh - bRect.bottom;
+        if (distFromBottom > inputBarH + 12 && distFromBottom + menuH < vh - 16) {
+          bottomOffset = distFromBottom;
+        }
+      }
+      // Guarantee top of menu never goes off the top of the screen
+      if (vh - bottomOffset - menuH < margin) {
+        bottomOffset = Math.max(margin, vh - menuH - margin);
+      }
+      menu.style.bottom = `${Math.round(bottomOffset)}px`;
+    } else {
+      // UPPER-MESSAGE MODE: Open cleanly downward
+      menu.classList.remove("open-upward");
+      menu.style.bottom = "auto";
+      const topPos = Math.max(margin, Math.min(vh - menuH - margin, anchorY));
+      menu.style.top = `${Math.round(topPos)}px`;
+    }
   }
 
-  const prevOpenCtxV69 = window.openWhatsAppMessageContextMenu;
+  const prevOpenCtxV70 = window.openWhatsAppMessageContextMenu;
   window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
-    if (typeof prevOpenCtxV69 === "function") {
-      prevOpenCtxV69(msgId, clientX, clientY);
+    if (typeof prevOpenCtxV70 === "function") {
+      prevOpenCtxV70(msgId, clientX, clientY);
     }
-    // Clamp immediately and on next animation frame after all plugins inject their buttons
-    clampContextMenuInsideScreen(clientX, clientY);
-    requestAnimationFrame(() => clampContextMenuInsideScreen(clientX, clientY));
+    positionWhatsAppContextMenu(msgId, clientX, clientY);
+    requestAnimationFrame(() => positionWhatsAppContextMenu(msgId, clientX, clientY));
+    setTimeout(() => positionWhatsAppContextMenu(msgId, clientX, clientY), 60);
   };
 })();
