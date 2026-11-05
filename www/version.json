@@ -1,11 +1,11 @@
 {
-  "version": "2.5.148",
-  "apkVersion": "2.5.148",
-  "versionCode": 148,
-  "featureVersion": "v61000",
-  "commit": "079a5a4",
-  "timestamp": 1793853141,
-  "notes": "Krypton v61500: Force-lock persistent APK keystore with git add -f to eliminate package conflict  ",
+  "version": "2.5.149",
+  "apkVersion": "2.5.149",
+  "versionCode": 149,
+  "featureVersion": "v62000",
+  "commit": "b5fcb2b",
+  "timestamp": 1793857091,
+  "notes": "Krypton v62000: Add Telegram Send Button Effects (Confetti/Fire/Love) & Starred Messages  ",
   "repo": "kisanraj73199-sudo/krypton-app",
   "apkUrl": "https://github.com/kisanraj73199-sudo/krypton-app/releases/download/latest/krypton.apk"
 }
