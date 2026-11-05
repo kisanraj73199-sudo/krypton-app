@@ -50,6 +50,7 @@ public class MainActivity extends BridgeActivity {
     private PermissionRequest pendingWebRtcRequest;
     private long downloadId = -1;
     private boolean isCallFlagSecureActive = false;
+    private String pendingUpdateApkUrl = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -222,10 +223,17 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    @Override
+   @Override
     public void onResume() {
         super.onResume();
         applyCallOnlyFlagSecure(isCallFlagSecureActive);
+        if (pendingUpdateApkUrl != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (getPackageManager().canRequestPackageInstalls()) {
+                String urlToResume = pendingUpdateApkUrl;
+                pendingUpdateApkUrl = null;
+                new KryptonNativeBridge().downloadAndInstallUpdate(urlToResume);
+            }
+        }
     }
 
     @Override
@@ -372,13 +380,15 @@ public class MainActivity extends BridgeActivity {
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         if (!getPackageManager().canRequestPackageInstalls()) {
-                            Toast.makeText(MainActivity.this, "Please allow 'Install unknown apps' for Krypton, then tap Update again!", Toast.LENGTH_LONG).show();
+                            pendingUpdateApkUrl = apkUrl;
+                            Toast.makeText(MainActivity.this, "Allow 'Install unknown apps' — download will start automatically!", Toast.LENGTH_LONG).show();
                             Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
                             startActivity(settingsIntent);
                             return;
                         }
                     }
 
+                    pendingUpdateApkUrl = null;
                     Toast.makeText(MainActivity.this, "Downloading Krypton Update...", Toast.LENGTH_SHORT).show();
 
                     new Thread(() -> {
@@ -386,25 +396,28 @@ public class MainActivity extends BridgeActivity {
                             File updateFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "krypton.apk");
                             if (updateFile.exists()) updateFile.delete();
 
-                            java.net.URL url = new java.net.URL(apkUrl + (apkUrl.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis());
-                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                            conn.setInstanceFollowRedirects(true);
-                            conn.setConnectTimeout(15000);
-                            conn.setReadTimeout(30000);
-                            conn.setRequestProperty("Accept", "application/octet-stream");
-                            conn.connect();
+                            String currentUrl = apkUrl + (apkUrl.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis();
+                            java.net.HttpURLConnection conn = null;
 
-                            // Follow 302 redirects manually if cross-domain (github.com -> objects.githubusercontent.com)
-                            int status = conn.getResponseCode();
-                            if (status == java.net.HttpURLConnection.HTTP_MOVED_TEMP
-                                || status == java.net.HttpURLConnection.HTTP_MOVED_PERM
-                                || status == 307 || status == 308) {
-                                String redirectUrl = conn.getHeaderField("Location");
-                                conn.disconnect();
-                                conn = (java.net.HttpURLConnection) new java.net.URL(redirectUrl).openConnection();
-                                conn.setConnectTimeout(15000);
-                                conn.setReadTimeout(30000);
+                            // Follow up to 5 HTTP 301/302/307/308 redirects across GitHub domains
+                            for (int redirects = 0; redirects < 5; redirects++) {
+                                conn = (java.net.HttpURLConnection) new java.net.URL(currentUrl).openConnection();
+                                conn.setInstanceFollowRedirects(false);
+                                conn.setConnectTimeout(20000);
+                                conn.setReadTimeout(45000);
+                                conn.setRequestProperty("User-Agent", "Krypton-Android-Updater");
+                                conn.setRequestProperty("Accept", "application/octet-stream, */*");
                                 conn.connect();
+
+                                int code = conn.getResponseCode();
+                                if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                                    String loc = conn.getHeaderField("Location");
+                                    conn.disconnect();
+                                    if (loc == null || loc.isEmpty()) break;
+                                    currentUrl = loc;
+                                } else {
+                                    break;
+                                }
                             }
 
                             int fileLength = conn.getContentLength();
@@ -421,9 +434,24 @@ public class MainActivity extends BridgeActivity {
                                 output.write(data, 0, count);
                                 if (fileLength > 0) {
                                     int pct = (int) ((total * 100) / fileLength);
-                                    if (pct != lastReportedPct && pct % 4 == 0) {
+                                    if (pct != lastReportedPct && pct % 3 == 0) {
                                         lastReportedPct = pct;
                                         final int p = pct;
+                                        runOnUiThread(() -> {
+                                            if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                                                MainActivity.this.bridge.getWebView().evaluateJavascript(
+                                                    "window.onKryptonApkDownloadProgress && window.onKryptonApkDownloadProgress(" + p + ");",
+                                                    null
+                                                );
+                                            }
+                                        });
+                                    }
+                                } else {
+                                    // If content-length header is omitted by chunked transfer, estimate based on ~6MB APK
+                                    int estPct = (int) Math.min(96, (total * 100) / (6 * 1024 * 1024));
+                                    if (estPct != lastReportedPct && estPct % 5 == 0) {
+                                        lastReportedPct = estPct;
+                                        final int p = estPct;
                                         runOnUiThread(() -> {
                                             if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
                                                 MainActivity.this.bridge.getWebView().evaluateJavascript(
@@ -450,7 +478,15 @@ public class MainActivity extends BridgeActivity {
                                 installApk(updateFile);
                             });
                         } catch (Exception ex) {
-                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Update Download Error: " + ex.getMessage(), Toast.LENGTH_LONG).show());
+                            runOnUiThread(() -> {
+                                if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                                    MainActivity.this.bridge.getWebView().evaluateJavascript(
+                                        "window.onKryptonApkDownloadError && window.onKryptonApkDownloadError();",
+                                        null
+                                    );
+                                }
+                                Toast.makeText(MainActivity.this, "Download failed, tap Update to retry: " + ex.getMessage(), Toast.LENGTH_LONG).show();
+                            });
                         }
                     }).start();
                 } catch (Exception e) {
