@@ -35,13 +35,12 @@ jobs:
           SECRET_URL: ${{ secrets.SUPABASE_URL }}
           SECRET_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          # Use fixed consistent version math based on run number to prevent conflicts
           VER_CODE=$((200 + ${GITHUB_RUN_NUMBER:-1}))
           APK_VER="2.5.${VER_CODE}"
           COMMIT_SHA="${GITHUB_SHA::7}"
           COMMIT_MSG=$(git log -1 --pretty=%B | tr '\n' ' ' | sed 's/"/\\"/g')
           FEAT_VER=$(grep -oE "v[0-9]{5}" www/app.js | tail -1)
-          if [ -z "$FEAT_VER" ]; then FEAT_VER="v65000"; fi
+          if [ -z "$FEAT_VER" ]; then FEAT_VER="v67000"; fi
           BUILD_TS=$(date +%s)
 
           cat <<EOF > www/version.json
@@ -67,9 +66,6 @@ jobs:
             sed -i "s|const RAW_KEY = \"your key\";|const RAW_KEY = \"$SECRET_KEY\";|g" www/app.js
           fi
 
-          sed -i "s|__KRYPTON_AUTO_REPO__|${GITHUB_REPOSITORY}|g" www/app.js
-          sed -i "s|__KRYPTON_AUTO_SHA__|${COMMIT_SHA}|g" www/app.js
-
           if [ -f "android/app/build.gradle" ]; then
             sed -i "s/versionCode [0-9]*/versionCode $VER_CODE/g" android/app/build.gradle
             sed -i "s/versionName \"[^\"]*\"/versionName \"$APK_VER\"/g" android/app/build.gradle
@@ -86,26 +82,16 @@ jobs:
           fi
           npx cap sync android
 
-      - name: Use Locked Persistent APK Signing Keystore
+      - name: Verify Persistent APK Signing Keystore
         run: |
           mkdir -p ~/.android
           KEYSTORE_FILE="android/app/krypton-master.jks"
-          if [ -f "$KEYSTORE_FILE" ]; then
-            cp -f "$KEYSTORE_FILE" ~/.android/debug.keystore
-            cp -f "$KEYSTORE_FILE" android/app/debug.keystore
-          else
-            keytool -genkeypair -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-            cp -f "$KEYSTORE_FILE" ~/.android/debug.keystore
-            cp -f "$KEYSTORE_FILE" android/app/debug.keystore
+          if [ ! -f "$KEYSTORE_FILE" ]; then
+            echo "CRITICAL ERROR: android/app/krypton-master.jks is not committed to Git!"
+            exit 1
           fi
+          cp -f "$KEYSTORE_FILE" ~/.android/debug.keystore
+          cp -f "$KEYSTORE_FILE" android/app/debug.keystore
 
       - name: Build Android Debug APK & Rename to krypton.apk
         run: |
@@ -113,11 +99,6 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/krypton.apk
-
-      - name: Copy version.json inside Android Assets for Instant Local Sync
-        run: |
-          mkdir -p android/app/src/main/assets
-          cp -f www/version.json android/app/src/main/assets/version.json || true
 
       - name: Upload krypton.apk Artifact
         uses: actions/upload-artifact@v4

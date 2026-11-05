@@ -2,15 +2,13 @@ package com.krypton.mesh;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.DownloadManager;
 import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -19,11 +17,13 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Toast;
 
@@ -36,7 +36,14 @@ import androidx.core.content.FileProvider;
 
 import com.getcapacitor.BridgeActivity;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,13 +55,11 @@ public class MainActivity extends BridgeActivity {
     private ActivityResultLauncher<Intent> fileChooserLauncher;
     private ActivityResultLauncher<Intent> biometricLauncher;
     private PermissionRequest pendingWebRtcRequest;
-    private long downloadId = -1;
     private boolean isCallFlagSecureActive = false;
     private String pendingUpdateApkUrl = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 1. Native Gallery Picker for DP Upload & File Attachments
         fileChooserLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -77,7 +82,6 @@ public class MainActivity extends BridgeActivity {
             }
         );
 
-        // 2. Native Android Hardware Biometric / Fingerprint / Face / Credential Unlock Launcher
         biometricLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -97,9 +101,8 @@ public class MainActivity extends BridgeActivity {
             }
         );
 
-     super.onCreate(savedInstanceState);
+        super.onCreate(savedInstanceState);
 
-        // Prevent White / Grey Screen Flash when Android Keyboard Opens or Closes!
         int obsidianBg = Color.parseColor("#06080F");
         getWindow().getDecorView().setBackgroundColor(obsidianBg);
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(obsidianBg));
@@ -112,11 +115,9 @@ public class MainActivity extends BridgeActivity {
         createNativeNotificationChannel();
         checkAndRequestPermissions();
 
-        // 3. Configure WebView for DP Upload, WebRTC Call Popup, Biometrics & In-App Updater
         if (this.bridge != null && this.bridge.getWebView() != null) {
             WebView webView = this.bridge.getWebView();
 
-            // Set WebView & its native Parent Container to Obsidian Dark (#06080F) so keyboard transition never flashes grey!
             webView.setBackgroundColor(obsidianBg);
             if (webView.getParent() instanceof android.view.View) {
                 ((android.view.View) webView.getParent()).setBackgroundColor(obsidianBg);
@@ -124,12 +125,27 @@ public class MainActivity extends BridgeActivity {
             if (webView.getRootView() != null) {
                 webView.getRootView().setBackgroundColor(obsidianBg);
             }
-            
-            webView.getSettings().setJavaScriptEnabled(true);
-            webView.getSettings().setDomStorageEnabled(true);
-            webView.getSettings().setAllowFileAccess(true);
-            webView.getSettings().setAllowContentAccess(true);
-            webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+
+            WebSettings settings = webView.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(true);
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            // CRITICAL: Disable HTTP disk cache so upgraded APK ALWAYS loads new HTML, CSS & JS immediately!
+            settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+
+            // Clear WebView disk cache whenever APK versionCode increases (preserves localStorage / login!)
+            try {
+                PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+                int curCode = pInfo.versionCode;
+                SharedPreferences prefs = getSharedPreferences("krypton_apk_meta", MODE_PRIVATE);
+                int lastCode = prefs.getInt("last_version_code", -1);
+                if (curCode != lastCode) {
+                    webView.clearCache(true);
+                    prefs.edit().putInt("last_version_code", curCode).apply();
+                }
+            } catch (Exception ignored) {}
 
             webView.addJavascriptInterface(new KryptonNativeBridge(), "KryptonNative");
 
@@ -223,7 +239,7 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-   @Override
+    @Override
     public void onResume() {
         super.onResume();
         applyCallOnlyFlagSecure(isCallFlagSecureActive);
@@ -277,7 +293,6 @@ public class MainActivity extends BridgeActivity {
             return true;
         }
 
-        // Toggle Screenshot & Screen Recording Block ONLY During Active Calls!
         @JavascriptInterface
         public void setCallCaptureBlock(boolean blockOnCall) {
             applyCallOnlyFlagSecure(blockOnCall);
@@ -291,6 +306,64 @@ public class MainActivity extends BridgeActivity {
             } catch (Exception e) {
                 return "2.5.0";
             }
+        }
+
+        // Native HTTP Manifest Fetcher (Reads version.json from GitHub Releases following 302 redirects without CORS!)
+        @JavascriptInterface
+        public void checkUpdateManifestNative(String manifestUrl) {
+            new Thread(() -> {
+                try {
+                    String currentUrl = manifestUrl + (manifestUrl.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis();
+                    HttpURLConnection conn = null;
+
+                    for (int redirects = 0; redirects < 6; redirects++) {
+                        conn = (HttpURLConnection) new URL(currentUrl).openConnection();
+                        conn.setInstanceFollowRedirects(false);
+                        conn.setConnectTimeout(15000);
+                        conn.setReadTimeout(15000);
+                        conn.setRequestProperty("User-Agent", "Krypton-Android-Updater");
+                        conn.setRequestProperty("Cache-Control", "no-cache");
+                        conn.connect();
+
+                        int code = conn.getResponseCode();
+                        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                            String loc = conn.getHeaderField("Location");
+                            conn.disconnect();
+                            if (loc == null || loc.isEmpty()) break;
+                            currentUrl = loc;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+
+                    final String b64Json = Base64.encodeToString(sb.toString().getBytes("UTF-8"), Base64.NO_WRAP);
+                    runOnUiThread(() -> {
+                        if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                            MainActivity.this.bridge.getWebView().evaluateJavascript(
+                                "window.onKryptonNativeManifestResult && window.onKryptonNativeManifestResult('" + b64Json + "');",
+                                null
+                            );
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                            MainActivity.this.bridge.getWebView().evaluateJavascript(
+                                "window.onKryptonNativeManifestResult && window.onKryptonNativeManifestResult('');",
+                                null
+                            );
+                        }
+                    });
+                }
+            }).start();
         }
 
         @JavascriptInterface
@@ -374,7 +447,7 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-       @JavascriptInterface
+        @JavascriptInterface
         public void downloadAndInstallUpdate(String apkUrl) {
             runOnUiThread(() -> {
                 try {
@@ -397,11 +470,10 @@ public class MainActivity extends BridgeActivity {
                             if (updateFile.exists()) updateFile.delete();
 
                             String currentUrl = apkUrl + (apkUrl.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis();
-                            java.net.HttpURLConnection conn = null;
+                            HttpURLConnection conn = null;
 
-                            // Follow up to 5 HTTP 301/302/307/308 redirects across GitHub domains
-                            for (int redirects = 0; redirects < 5; redirects++) {
-                                conn = (java.net.HttpURLConnection) new java.net.URL(currentUrl).openConnection();
+                            for (int redirects = 0; redirects < 6; redirects++) {
+                                conn = (HttpURLConnection) new URL(currentUrl).openConnection();
                                 conn.setInstanceFollowRedirects(false);
                                 conn.setConnectTimeout(20000);
                                 conn.setReadTimeout(45000);
@@ -421,8 +493,8 @@ public class MainActivity extends BridgeActivity {
                             }
 
                             int fileLength = conn.getContentLength();
-                            java.io.InputStream input = new java.io.BufferedInputStream(conn.getInputStream());
-                            java.io.FileOutputStream output = new java.io.FileOutputStream(updateFile);
+                            InputStream input = new BufferedInputStream(conn.getInputStream());
+                            FileOutputStream output = new FileOutputStream(updateFile);
 
                             byte[] data = new byte[8192];
                             long total = 0;
@@ -447,7 +519,6 @@ public class MainActivity extends BridgeActivity {
                                         });
                                     }
                                 } else {
-                                    // If content-length header is omitted by chunked transfer, estimate based on ~6MB APK
                                     int estPct = (int) Math.min(96, (total * 100) / (6 * 1024 * 1024));
                                     if (estPct != lastReportedPct && estPct % 5 == 0) {
                                         lastReportedPct = estPct;
