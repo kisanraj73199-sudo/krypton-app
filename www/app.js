@@ -21761,3 +21761,303 @@ initIdentity();
   });
   setTimeout(bindUpdateBtn, 1500);
 })();
+// =========================================================================
+// 52. FEATURE v68000 (TELEGRAM-STYLE INTERACTIVE LIVE POLLS & 1-TAP
+//     IN-CHAT MESSAGE TRANSLATOR):
+//     1. ADDS "📊 Poll" BUTTON INSIDE ATTACHMENT HUB POPOVER
+//     2. RENDERS LIVE VOTING POLL BUBBLES WITH REALTIME SYNC ACROSS PEERS
+//     3. ADDS "🌐 Translate Message" TO LONG-PRESS CONTEXT MENU
+// =========================================================================
+
+(function () {
+  let pollVotesCache = JSON.parse(localStorage.getItem("krypton_poll_votes") || "{}");
+
+  function savePollVotes() {
+    localStorage.setItem("krypton_poll_votes", JSON.stringify(pollVotesCache));
+  }
+
+  // 1. Inject "📊 Poll" Button into Corner (+) Attachment Hub (#attach-hub-menu)
+  function injectPollHubButton() {
+    const hubMenu = document.getElementById("attach-hub-menu");
+    if (!hubMenu || document.getElementById("hub-btn-poll")) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "hub-btn-poll";
+    btn.className = "attach-hub-item";
+    btn.style.gridColumn = "span 2";
+    btn.innerHTML = `
+      <div class="hub-icon-circle" style="background: rgba(16, 185, 129, 0.16); color: #10b981;">
+        <i data-lucide="bar-chart-3" style="width: 18px; height: 18px;"></i>
+      </div>
+      <span>Create Interactive Poll</span>
+    `;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      hubMenu.classList.add("hidden");
+      const btnAttach = document.getElementById("btn-attach-hub");
+      if (btnAttach) btnAttach.classList.remove("active");
+      openCreatePollModal();
+    };
+    hubMenu.appendChild(btn);
+    if (window.lucide) lucide.createIcons({ nodes: [btn] });
+  }
+
+  // 2. Poll Creator Modal
+  function openCreatePollModal() {
+    let modal = document.getElementById("krypton-poll-create-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "krypton-poll-create-modal";
+      modal.className = "glass-modal hidden";
+      modal.style.zIndex = "99999993";
+      modal.innerHTML = `
+        <div class="glass-card" style="max-width: 395px; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+          <div class="settings-pinned-header" style="padding: 14px 18px;">
+            <div class="brand-inline">
+              <div class="header-badge-icon">
+                <i data-lucide="bar-chart-3" style="width: 17px; height: 17px;"></i>
+              </div>
+              <h3 style="font-size: 16px; font-weight: 800;">Create Encrypted Poll</h3>
+            </div>
+            <button type="button" id="btn-close-poll-modal" class="icon-close-btn sm">
+              <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <div class="settings-scroll-body" style="padding: 16px 18px; gap: 12px;">
+            <div class="input-group">
+              <label class="auth-field-label">POLL QUESTION</label>
+              <input type="text" id="poll-question-input" placeholder="Ask a question..." maxlength="120" autocomplete="off" />
+            </div>
+            <div class="input-group">
+              <label class="auth-field-label">OPTIONS (2 TO 4 OPTIONS)</label>
+              <div class="poll-opt-input-row"><input type="text" class="poll-opt-inp" placeholder="Option 1" maxlength="60" /></div>
+              <div class="poll-opt-input-row"><input type="text" class="poll-opt-inp" placeholder="Option 2" maxlength="60" /></div>
+              <div class="poll-opt-input-row"><input type="text" class="poll-opt-inp" placeholder="Option 3 (Optional)" maxlength="60" /></div>
+              <div class="poll-opt-input-row"><input type="text" class="poll-opt-inp" placeholder="Option 4 (Optional)" maxlength="60" /></div>
+            </div>
+          </div>
+          <div class="modal-actions" style="padding: 12px 18px; border-top: 1px solid var(--glass-border-subtle); background: var(--glass-dropdown); margin: 0;">
+            <button type="button" id="btn-cancel-poll-modal" class="glass-btn secondary">Cancel</button>
+            <button type="button" id="btn-send-poll-now" class="glass-btn primary">Send Poll</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      if (window.lucide) lucide.createIcons({ nodes: [modal] });
+
+      modal.querySelector("#btn-close-poll-modal").onclick = () => modal.classList.add("hidden");
+      modal.querySelector("#btn-cancel-poll-modal").onclick = () => modal.classList.add("hidden");
+      modal.querySelector("#btn-send-poll-now").onclick = () => {
+        const q = (modal.querySelector("#poll-question-input").value || "").trim();
+        const opts = Array.from(modal.querySelectorAll(".poll-opt-inp"))
+          .map((i) => i.value.trim())
+          .filter(Boolean);
+
+        if (!q || opts.length < 2) {
+          showToast("Enter a question and at least 2 options!", "error");
+          return;
+        }
+        const pollObj = {
+          id: "poll_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+          q: q,
+          opts: opts
+        };
+        modal.classList.add("hidden");
+        transmitPayload("POLL_JSON:" + JSON.stringify(pollObj));
+      };
+    }
+
+    modal.querySelector("#poll-question-input").value = "";
+    modal.querySelectorAll(".poll-opt-inp").forEach((inp) => (inp.value = ""));
+    modal.classList.remove("hidden");
+    setTimeout(() => modal.querySelector("#poll-question-input").focus(), 80);
+  }
+
+  // 3. Render & Vote on Poll Cards
+  function renderPollCardDOM(pollObj) {
+    const pollId = pollObj.id;
+    const votesByOpt = pollVotesCache[pollId] || {};
+    const me = (myUsername || "").toLowerCase();
+
+    let totalVotes = 0;
+    Object.values(votesByOpt).forEach((arr) => {
+      if (Array.isArray(arr)) totalVotes += arr.length;
+    });
+
+    const wrap = document.createElement("div");
+    wrap.className = "krypton-poll-card";
+    wrap.dataset.pollId = pollId;
+
+    const optsHTML = (pollObj.opts || [])
+      .map((optText, idx) => {
+        const voters = Array.isArray(votesByOpt[idx]) ? votesByOpt[idx] : [];
+        const pct = totalVotes > 0 ? Math.round((voters.length / totalVotes) * 100) : 0;
+        const votedByMe = voters.includes(me);
+        return `
+          <button type="button" class="krypton-poll-opt-btn ${votedByMe ? "voted-by-me" : ""}" onclick="window.castKryptonPollVote('${escapeHTML(pollId)}', ${idx})">
+            <div class="krypton-poll-opt-fill" style="width: ${pct}%;"></div>
+            <div class="krypton-poll-opt-content">
+              <span>${votedByMe ? "✓ " : ""}${escapeHTML(optText)}</span>
+              <span class="krypton-poll-opt-pct">${pct}% (${voters.length})</span>
+            </div>
+          </button>
+        `;
+      })
+      .join("");
+
+    wrap.innerHTML = `
+      <div class="krypton-poll-header">
+        <span>📊 ENCRYPTED POLL</span>
+      </div>
+      <div class="krypton-poll-question">${escapeHTML(pollObj.q)}</div>
+      <div class="krypton-poll-options-list">${optsHTML}</div>
+      <div class="krypton-poll-footer">
+        <span>${totalVotes} vote${totalVotes === 1 ? "" : "s"}</span>
+        <span>Tap option to vote</span>
+      </div>
+    `;
+    return wrap;
+  }
+
+  function refreshPollCardInDOM(pollId) {
+    document.querySelectorAll(`.krypton-poll-card[data-poll-id="${pollId}"]`).forEach((card) => {
+      const rawJson = card.dataset.pollRaw;
+      if (!rawJson) return;
+      try {
+        const pollObj = JSON.parse(rawJson);
+        const fresh = renderPollCardDOM(pollObj);
+        fresh.dataset.pollRaw = rawJson;
+        card.replaceWith(fresh);
+      } catch (e) { }
+    });
+  }
+
+  window.castKryptonPollVote = function (pollId, optIdx) {
+    if (!pollId) return;
+    const me = (myUsername || "").toLowerCase();
+    applyPollVoteLocally(pollId, optIdx, me);
+    if (activeSubscription) {
+      activeSubscription.send({
+        type: "broadcast",
+        event: "poll-vote",
+        payload: { pollId, optIdx, voter: me }
+      });
+    }
+  };
+
+  function applyPollVoteLocally(pollId, optIdx, voter) {
+    if (!pollVotesCache[pollId]) pollVotesCache[pollId] = {};
+    const map = pollVotesCache[pollId];
+    Object.keys(map).forEach((k) => {
+      map[k] = (map[k] || []).filter((u) => u !== voter);
+    });
+    if (!map[optIdx]) map[optIdx] = [];
+    map[optIdx].push(voter);
+    savePollVotes();
+    refreshPollCardInDOM(pollId);
+  }
+
+  // 4. 1-Tap Message Translator inside Long-Press Context Menu
+  window.translateMessageInline = async function (msgId) {
+    const row = document.getElementById("msg-row-" + msgId);
+    if (!row) return;
+    const textLine = row.querySelector(".msg-text-line");
+    const bubbleContent = row.querySelector(".bubble-content");
+    if (!textLine || !bubbleContent) return;
+
+    const existing = bubbleContent.querySelector(".msg-translated-box");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    const rawText = textLine.textContent.trim();
+    if (!rawText) return;
+
+    const box = document.createElement("div");
+    box.className = "msg-translated-box";
+    box.innerHTML = `<span class="msg-translated-label">🌐 Translating...</span>`;
+    bubbleContent.appendChild(box);
+
+    try {
+      const targetLang = /[\u0900-\u097F]/.test(rawText) ? "en" : "hi";
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(rawText)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const translated =
+          data && Array.isArray(data[0])
+            ? data[0].map((part) => part[0]).join("")
+            : "";
+        if (translated) {
+          box.innerHTML = `<span class="msg-translated-label">🌐 Translated (${targetLang === "hi" ? "Hindi" : "English"})</span>${escapeHTML(translated)}`;
+          return;
+        }
+      }
+      box.remove();
+      showToast("Could not translate this message.", "error");
+    } catch (e) {
+      box.remove();
+      showToast("Translation offline.", "error");
+    }
+  };
+
+  // Hook createMessageNode to transform POLL_JSON messages into interactive poll cards
+  const prevCreateNodeV68 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateNodeV68(msg, rawTextOverride);
+    if (!node) return node;
+
+    const textLine = node.querySelector(".msg-text-line");
+    if (textLine && textLine.textContent.startsWith("POLL_JSON:")) {
+      const rawJson = textLine.textContent.slice(10);
+      try {
+        const pollObj = JSON.parse(rawJson);
+        const pollCard = renderPollCardDOM(pollObj);
+        pollCard.dataset.pollRaw = rawJson;
+        textLine.innerHTML = "";
+        textLine.appendChild(pollCard);
+      } catch (e) { }
+    }
+    return node;
+  };
+
+  // Hook joinRoom for realtime poll vote sync
+  const prevJoinRoomV68 = window.joinRoom;
+  window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+    await prevJoinRoomV68(roomId, displayName, pushHistory);
+    if (activeSubscription) {
+      activeSubscription.on("broadcast", { event: "poll-vote" }, (payload) => {
+        const p = payload.payload;
+        if (p && p.pollId && p.voter) {
+          applyPollVoteLocally(p.pollId, p.optIdx, p.voter);
+        }
+      });
+    }
+  };
+
+  // Hook Context Menu to add "🌐 Translate Message"
+  const prevOpenCtxV68 = window.openWhatsAppMessageContextMenu;
+  window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
+    if (typeof prevOpenCtxV68 === "function") {
+      prevOpenCtxV68(msgId, clientX, clientY);
+    }
+    const row = document.getElementById("msg-row-" + msgId);
+    const actionsList = document.querySelector(".whatsapp-msg-context-menu .msg-ctx-actions-list");
+    if (!row || !actionsList || row.dataset.msgType !== "text") return;
+
+    const btnTrans = document.createElement("button");
+    btnTrans.className = "msg-ctx-btn";
+    btnTrans.innerHTML = `<i data-lucide="languages" style="width: 15px; height: 15px; color: #38bdf8;"></i><span>Translate Message</span>`;
+    btnTrans.onclick = () => {
+      if (typeof closeMessageContextMenu === "function") closeMessageContextMenu();
+      window.translateMessageInline(msgId);
+    };
+    actionsList.insertBefore(btnTrans, actionsList.children[2] || actionsList.firstChild);
+    if (window.lucide) lucide.createIcons({ nodes: [btnTrans] });
+  };
+
+  document.addEventListener("DOMContentLoaded", injectPollHubButton);
+  setTimeout(injectPollHubButton, 600);
+})();

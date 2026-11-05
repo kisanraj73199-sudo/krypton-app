@@ -8778,3 +8778,42 @@ body:not(.dark-theme) .tg-date-header-pill {
   background: rgba(255, 255, 255, 0.16);
   margin-bottom: 3px;
 }
+
+/* =========================================================
+   v68000: INTERACTIVE POLL CREATOR MODAL & INLINE TRANSLATION
+   ========================================================= */
+
+.msg-translated-box {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid #38bdf8;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-main);
+  animation: fadeInModal 0.2s ease;
+}
+
+.msg-bubble.sent .msg-translated-box {
+  background: rgba(0, 0, 0, 0.24);
+  border-left-color: #ffffff;
+  color: #ffffff;
+}
+
+.msg-translated-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+  margin-bottom: 2px;
+}
+
+.poll-opt-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
