@@ -21096,3 +21096,208 @@ initIdentity();
   setTimeout(bindNativeUpdater, 500);
   setTimeout(bindNativeUpdater, 1400);
 })();
+// =========================================================================
+// 49. FEATURE v61000 (SHARED MEDIA, FILES & LINKS GALLERY + DOUBLE-TAP
+//     HEART POP ANIMATION):
+//     1. ADDS "Shared Media, Files & Links" IN CHAT 3-DOT MENU & USER MODAL
+//     2. RENDERS PHOTOS GRID,SHARED FILES & CLICKABLE LINKS FOR CURRENT CHAT
+//     3. ADDS SMOOTH FLOATING HEART POP WHEN DOUBLE-TAPPING ANY MESSAGE
+// =========================================================================
+
+(function () {
+  let activeSharedMediaTab = "photos";
+
+  function ensureSharedMediaModalDOM() {
+    let modal = document.getElementById("krypton-shared-media-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "krypton-shared-media-modal";
+    modal.className = "glass-modal hidden";
+    modal.style.zIndex = "99999994";
+    modal.innerHTML = `
+      <div class="glass-card" style="max-width: 420px; max-height: 84dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+        <div class="settings-pinned-header" style="padding: 14px 18px;">
+          <div class="brand-inline">
+            <div class="header-badge-icon">
+              <i data-lucide="folder-heart" style="width: 17px; height: 17px;"></i>
+            </div>
+            <h3 id="shared-media-modal-title" style="font-size: 15.5px; font-weight: 800;">Shared Media & Links</h3>
+          </div>
+          <button type="button" id="btn-close-shared-media-modal" class="icon-close-btn sm" title="Close">
+            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+
+        <div style="padding: 12px 16px 6px 16px;">
+          <div class="shared-media-tabs-row" id="shared-media-tabs">
+            <button type="button" class="shared-media-tab-btn active" data-sm-tab="photos">Photos</button>
+            <button type="button" class="shared-media-tab-btn" data-sm-tab="files">Files & Voice</button>
+            <button type="button" class="shared-media-tab-btn" data-sm-tab="links">Links</button>
+          </div>
+        </div>
+
+        <div id="shared-media-modal-body" class="settings-scroll-body" style="padding: 12px 16px 18px 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto;"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector("#btn-close-shared-media-modal").onclick = () => {
+      modal.classList.add("hidden");
+    };
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.classList.add("hidden");
+    });
+
+    modal.querySelectorAll(".shared-media-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        modal.querySelectorAll(".shared-media-tab-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeSharedMediaTab = btn.dataset.smTab || "photos";
+        renderSharedMediaGalleryContent();
+      });
+    });
+
+    if (window.lucide) lucide.createIcons({ nodes: [modal] });
+    return modal;
+  }
+
+  function renderSharedMediaGalleryContent() {
+    const body = document.getElementById("shared-media-modal-body");
+    if (!body) return;
+    body.innerHTML = "";
+
+    const rows = Array.from(document.querySelectorAll("#message-container .message-row"));
+
+    if (activeSharedMediaTab === "photos") {
+      const photoRows = rows.filter((r) => r.querySelector("img.chat-thumbnail-img"));
+      if (photoRows.length === 0) {
+        body.innerHTML = `<div class="empty-filter-placeholder">No shared photos in this chat yet.</div>`;
+        return;
+      }
+      const grid = document.createElement("div");
+      grid.className = "shared-media-photo-grid";
+      photoRows.reverse().forEach((r) => {
+        const img = r.querySelector("img.chat-thumbnail-img");
+        if (!img) return;
+        const sender = r.dataset.sender || "user";
+        const box = document.createElement("div");
+        box.className = "shared-media-thumb-box";
+        box.innerHTML = `<img src="${img.src}" alt="Shared Photo" loading="lazy" />`;
+        box.onclick = () => {
+          openFullscreenImageViewer(img.src, `@${sender} • Shared Photo`);
+        };
+        grid.appendChild(box);
+      });
+      body.appendChild(grid);
+    } else if (activeSharedMediaTab === "files") {
+      const fileRows = rows.filter(
+        (r) => r.dataset.msgType === "files" || r.dataset.msgType === "voice"
+      );
+      if (fileRows.length === 0) {
+        body.innerHTML = `<div class="empty-filter-placeholder">No shared files or voice notes in this chat yet.</div>`;
+        return;
+      }
+      const col = document.createElement("div");
+      col.className = "shared-media-list-col";
+      fileRows.reverse().forEach((r) => {
+        const isVoice = r.dataset.msgType === "voice";
+        const nameEl = r.querySelector(".file-card-name");
+        const title = isVoice ? "🎤 Encrypted Voice Note" : `📎 ${nameEl ? nameEl.textContent : "Document"}`;
+        const sender = r.dataset.sender || "user";
+        const msgId = (r.id || "").replace("msg-row-", "");
+
+        const item = document.createElement("div");
+        item.className = "shared-media-item-row";
+        item.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
+            <span style="font-size:12.5px;font-weight:800;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(title)}</span>
+            <span style="font-size:10.5px;color:var(--text-dim);">Sent by @${escapeHTML(sender)} • Tap to jump to message</span>
+          </div>
+          <i data-lucide="arrow-up-right" style="width:16px;height:16px;color:var(--accent-primary);flex-shrink:0;"></i>
+        `;
+        item.onclick = () => {
+          document.getElementById("krypton-shared-media-modal").classList.add("hidden");
+          scrollToQuotedMessage(msgId);
+        };
+        col.appendChild(item);
+      });
+      body.appendChild(col);
+      if (window.lucide) lucide.createIcons({ nodes: [col] });
+    } else {
+      const linkRows = rows.filter((r) => r.dataset.hasLink === "true");
+      if (linkRows.length === 0) {
+        body.innerHTML = `<div class="empty-filter-placeholder">No shared links in this chat yet.</div>`;
+        return;
+      }
+      const col = document.createElement("div");
+      col.className = "shared-media-list-col";
+      linkRows.reverse().forEach((r) => {
+        const aEl = r.querySelector("a.chat-auto-link");
+        if (!aEl) return;
+        const sender = r.dataset.sender || "user";
+        const item = document.createElement("div");
+        item.className = "shared-media-item-row";
+        item.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
+            <span style="font-size:12.5px;font-weight:800;color:var(--accent-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(aEl.href)}</span>
+            <span style="font-size:10.5px;color:var(--text-dim);">Shared by @${escapeHTML(sender)}</span>
+          </div>
+          <i data-lucide="external-link" style="width:15px;height:15px;color:var(--text-muted);flex-shrink:0;"></i>
+        `;
+        item.onclick = () => window.open(aEl.href, "_blank");
+        col.appendChild(item);
+      });
+      body.appendChild(col);
+      if (window.lucide) lucide.createIcons({ nodes: [col] });
+    }
+  }
+
+  window.openSharedMediaGallery = function () {
+    const headerDropdown = document.getElementById("header-dropdown-menu");
+    if (headerDropdown) headerDropdown.classList.add("hidden");
+
+    const modal = ensureSharedMediaModalDOM();
+    const titleEl = document.getElementById("shared-media-modal-title");
+    const roomTitle = document.getElementById("current-room-title");
+    if (titleEl && roomTitle) {
+      titleEl.textContent = `Shared Media • ${roomTitle.textContent}`;
+    }
+    renderSharedMediaGalleryContent();
+    modal.classList.remove("hidden");
+  };
+
+  // Inject "Shared Media, Files & Links" button into Chat Header 3-Dot Dropdown Menu
+  function injectSharedMediaMenuItem() {
+    const headerDropdown = document.getElementById("header-dropdown-menu");
+    if (!headerDropdown || document.getElementById("btn-open-shared-media-gallery")) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "btn-open-shared-media-gallery";
+    btn.className = "contact-dropdown-item";
+    btn.style.marginBottom = "4px";
+    btn.innerHTML = `
+      <i data-lucide="folder-heart" style="width: 14px; height: 14px; color: var(--accent-primary);"></i>
+      <span>Shared Media & Links</span>
+    `;
+    btn.onclick = () => window.openSharedMediaGallery();
+    headerDropdown.insertBefore(btn, headerDropdown.firstChild);
+    if (window.lucide) lucide.createIcons({ nodes: [btn] });
+  }
+
+  // Add Floating Heart Pop Animation when double-tapping a message bubble
+  document.addEventListener("dblclick", (e) => {
+    const bubble = e.target && e.target.closest(".bubble-content");
+    if (!bubble) return;
+    const pop = document.createElement("div");
+    pop.className = "msg-floating-heart-burst";
+    pop.textContent = "❤️";
+    bubble.style.position = "relative";
+    bubble.appendChild(pop);
+    setTimeout(() => pop.remove(), 620);
+  });
+
+  document.addEventListener("DOMContentLoaded", injectSharedMediaMenuItem);
+  setTimeout(injectSharedMediaMenuItem, 500);
+})();
