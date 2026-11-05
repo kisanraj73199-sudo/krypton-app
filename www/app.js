@@ -21563,3 +21563,202 @@ initIdentity();
   document.addEventListener("DOMContentLoaded", initV62000);
   setTimeout(initV62000, 500);
 })();
+// =========================================================================
+// 51. FEATURE v65000 (BULLETPROOF INSTANT NATIVE APK VERSION CHECKER):
+// =========================================================================
+
+(function () {
+  const GITHUB_REPO_SLUG = "kisanraj73199-sudo/krypton-app";
+
+  function getLocalAppVersion() {
+    try {
+      if (window.KryptonNative && typeof window.KryptonNative.getAppVersionName === "function") {
+        const v = String(window.KryptonNative.getAppVersionName() || "").trim();
+        if (v) return v;
+      }
+    } catch (e) { }
+    return "2.5.149";
+  }
+
+  window.checkForKryptonHybridUpdate = async function (isManualClick = false) {
+    if (isManualClick) {
+      showToast("Checking GitHub for updates...", "info", 1500);
+    }
+
+    const localVer = getLocalAppVersion();
+    const bust = Date.now();
+    let remoteData = null;
+
+    // 1. Primary Check: GitHub Actions Latest Completed Run (Always 100% Live without git commits!)
+    try {
+      const runRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO_SLUG}/actions/runs?status=completed&per_page=1&t=${bust}`,
+        { cache: "no-store" }
+      );
+      if (runRes.ok) {
+        const runJson = await runRes.json();
+        const latestRun = runJson && runJson.workflow_runs && runJson.workflow_runs[0];
+        if (latestRun && latestRun.run_number) {
+          const calcVer = `2.5.${200 + Number(latestRun.run_number)}`;
+          remoteData = {
+            apkVersion: calcVer,
+            version: calcVer,
+            notes: (latestRun.head_commit && latestRun.head_commit.message) || "Performance upgrades & new features ready.",
+            apkUrl: `https://github.com/${GITHUB_REPO_SLUG}/releases/download/latest/krypton.apk`
+          };
+        }
+      }
+    } catch (e) { }
+
+    // 2. Fallback Check: Raw version.json if present
+    if (!remoteData) {
+      try {
+        const res = await fetch(
+          `https://raw.githubusercontent.com/${GITHUB_REPO_SLUG}/main/www/version.json?t=${bust}`,
+          { cache: "no-store" }
+        );
+        if (res.ok) {
+          const json = await res.json();
+          if (json && (json.apkVersion || json.version)) {
+            remoteData = json;
+          }
+        }
+      } catch (e) { }
+    }
+
+    if (!remoteData) {
+      if (isManualClick) {
+        showToast("Could not reach update server.", "error");
+      }
+      return;
+    }
+
+    const remoteVer = remoteData.apkVersion || remoteData.version;
+    const apkUrl = remoteData.apkUrl || `https://github.com/${GITHUB_REPO_SLUG}/releases/download/latest/krypton.apk`;
+
+    const cleanLocal = localVer.replace(/^v/i, "").trim();
+    const cleanRemote = remoteVer.replace(/^v/i, "").trim();
+    const hasNewer = cleanRemote.localeCompare(cleanLocal, undefined, { numeric: true, sensitivity: "base" }) > 0;
+
+    if (hasNewer || isManualClick) {
+      let modal = document.getElementById("krypton-hybrid-update-modal");
+      if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "krypton-hybrid-update-modal";
+        modal.className = "krypton-update-modal-overlay";
+        modal.innerHTML = `
+          <div class="krypton-update-card">
+            <div class="update-hero-row">
+              <div class="update-badge-orb">
+                <i data-lucide="download-cloud" style="width: 24px; height: 24px;"></i>
+              </div>
+              <div class="update-title-stack">
+                <h3 id="update-modal-heading">New Update Available!</h3>
+                <span class="update-version-pill" id="update-modal-ver-text">v${cleanLocal} ➔ v${cleanRemote}</span>
+              </div>
+            </div>
+            <div class="update-notes-box" id="update-modal-notes">
+              ${escapeHTML(remoteData.notes || "Performance upgrades & new features ready.")}
+            </div>
+            <div class="update-safe-note">
+              <i data-lucide="shield-check" style="width: 15px; height: 15px; flex-shrink: 0;"></i>
+              <span>100% Safe Upgrade • Chats & account remain logged in.</span>
+            </div>
+            <div class="update-progress-wrap hidden" id="update-modal-progress-wrap">
+              <div class="update-progress-bar">
+                <div class="update-progress-fill" id="update-modal-progress-fill"></div>
+              </div>
+              <span class="update-progress-status" id="update-modal-progress-status">Downloading update (0%)...</span>
+            </div>
+            <div class="update-actions-col" id="update-modal-actions">
+              <button type="button" class="btn-update-instant" id="btn-trigger-native-apk">
+                <i data-lucide="zap" style="width: 16px; height: 16px;"></i>
+                <span id="btn-trigger-native-apk-label">Update Now (v${cleanRemote})</span>
+              </button>
+              <div class="update-secondary-row">
+                <button type="button" class="btn-update-later" id="btn-dismiss-update-modal" style="width: 100%;">
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        if (window.lucide) lucide.createIcons({ nodes: [modal] });
+      }
+
+      const heading = document.getElementById("update-modal-heading");
+      const verText = document.getElementById("update-modal-ver-text");
+      const notesBox = document.getElementById("update-modal-notes");
+      const progressWrap = document.getElementById("update-modal-progress-wrap");
+      const btnApk = document.getElementById("btn-trigger-native-apk");
+      const btnApkLabel = document.getElementById("btn-trigger-native-apk-label");
+      const btnLater = document.getElementById("btn-dismiss-update-modal");
+
+      if (progressWrap) progressWrap.classList.add("hidden");
+      if (btnApk) btnApk.disabled = false;
+
+      if (hasNewer) {
+        if (heading) heading.textContent = "New Update Available!";
+        if (verText) verText.textContent = `v${cleanLocal} ➔ v${cleanRemote}`;
+        if (btnApkLabel) btnApkLabel.textContent = `Update Now (v${cleanRemote})`;
+      } else {
+        if (heading) heading.textContent = `Up to Date (v${cleanLocal}) ✓`;
+        if (verText) verText.textContent = `Latest Version Installed`;
+        if (btnApkLabel) btnApkLabel.textContent = `Reinstall v${cleanRemote}`;
+      }
+      if (notesBox) notesBox.textContent = `What's New: ${remoteData.notes || "Latest features synced."}`;
+
+      if (btnApk) {
+        btnApk.onclick = () => {
+          btnApk.disabled = true;
+          window.onKryptonApkDownloadProgress(2);
+          if (window.KryptonNative && typeof window.KryptonNative.downloadAndInstallUpdate === "function") {
+            window.KryptonNative.downloadAndInstallUpdate(apkUrl);
+          } else {
+            window.open(apkUrl, "_blank");
+          }
+        };
+      }
+
+      if (btnLater) {
+        btnLater.onclick = () => modal.classList.add("hidden");
+      }
+
+      modal.classList.remove("hidden");
+    }
+  };
+
+  window.onKryptonApkDownloadProgress = function (pct) {
+    const progressWrap = document.getElementById("update-modal-progress-wrap");
+    const progressFill = document.getElementById("update-modal-progress-fill");
+    const progressStatus = document.getElementById("update-modal-progress-status");
+    const modal = document.getElementById("krypton-hybrid-update-modal");
+
+    if (progressWrap) progressWrap.classList.remove("hidden");
+    if (progressFill) progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    if (progressStatus) {
+      progressStatus.textContent =
+        pct >= 100
+          ? "Download complete! Opening Android Installer..."
+          : `Downloading new APK update (${pct}%)...`;
+    }
+    if (pct >= 100 && modal) {
+      setTimeout(() => modal.classList.add("hidden"), 1500);
+    }
+  };
+
+  const btnReload = document.getElementById("btn-force-reload-app");
+  if (btnReload) {
+    btnReload.innerHTML = `<i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i><span>Check Update • v${getLocalAppVersion()}</span>`;
+    if (window.lucide) lucide.createIcons({ nodes: [btnReload] });
+    btnReload.onclick = (e) => {
+      e.preventDefault();
+      window.checkForKryptonHybridUpdate(true);
+    };
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => window.checkForKryptonHybridUpdate(false), 2200);
+  });
+})();
