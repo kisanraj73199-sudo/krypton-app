@@ -8817,3 +8817,23 @@ body:not(.dark-theme) .tg-date-header-pill {
   gap: 8px;
   margin-bottom: 8px;
 }
+
+/* =========================================================
+   v69000: WHATSAPP-STYLE LONG-PRESS CONTEXT MENU VIEWPORT
+   FIT & COMPACT SPACING (NEVER CLIPS "DELETE MESSAGE")
+   ========================================================= */
+
+.whatsapp-msg-context-menu {
+  max-height: calc(100dvh - 32px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 7px !important;
+  gap: 4px !important;
+  box-sizing: border-box !important;
+}
+
+.whatsapp-msg-context-menu .msg-ctx-btn {
+  padding: 8px 11px !important;
+  font-size: 12.5px !important;
+  flex-shrink: 0 !important;
+}

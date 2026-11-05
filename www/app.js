@@ -22061,3 +22061,53 @@ initIdentity();
   document.addEventListener("DOMContentLoaded", injectPollHubButton);
   setTimeout(injectPollHubButton, 600);
 })();
+// =========================================================================
+// 53. FEATURE v69000 (WHATSAPP-STYLE CONTEXT MENU SMART VIEWPORT CLAMP):
+//     RE-CALCULATES MENU POSITION AFTER ALL EXTRA ITEMS (INFO, STAR,
+//     TRANSLATE, FORWARD) ARE INJECTED SO "DELETE MESSAGE" NEVER CLIPS!
+// =========================================================================
+
+(function () {
+  function clampContextMenuInsideScreen(clientX, clientY) {
+    const menu = document.querySelector(".whatsapp-msg-context-menu");
+    if (!menu) return;
+
+    const vw = window.innerWidth;
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const margin = 14;
+
+    const rect = menu.getBoundingClientRect();
+    const menuW = rect.width || 248;
+    const menuH = rect.height || 360;
+
+    let left = typeof clientX === "number" && clientX > 0 ? clientX - menuW / 2 : (vw - menuW) / 2;
+    let top = typeof clientY === "number" && clientY > 0 ? clientY - 20 : (vh - menuH) / 2;
+
+    // If menu goes below bottom edge (where Delete Message is), shift it cleanly upward!
+    if (top + menuH > vh - margin) {
+      top = vh - menuH - margin;
+    }
+    if (top < margin) {
+      top = margin;
+    }
+    if (left + menuW > vw - margin) {
+      left = vw - menuW - margin;
+    }
+    if (left < margin) {
+      left = margin;
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  const prevOpenCtxV69 = window.openWhatsAppMessageContextMenu;
+  window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
+    if (typeof prevOpenCtxV69 === "function") {
+      prevOpenCtxV69(msgId, clientX, clientY);
+    }
+    // Clamp immediately and on next animation frame after all plugins inject their buttons
+    clampContextMenuInsideScreen(clientX, clientY);
+    requestAnimationFrame(() => clampContextMenuInsideScreen(clientX, clientY));
+  };
+})();
