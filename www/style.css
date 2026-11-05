@@ -8690,3 +8690,91 @@ body:not(.dark-theme) .tg-date-header-pill {
     transform: translate(-50%, -85%) scale(1.05) rotate(0deg);
   }
 }
+
+/* =========================================================
+   v62000: TELEGRAM-STYLE MESSAGE SEND EFFECTS POPOVER &
+   STARRED MESSAGES BADGE
+   ========================================================= */
+
+.tg-send-effects-popover {
+  position: absolute;
+  bottom: 64px;
+  right: 12px;
+  background: var(--glass-dropdown);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 999px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 250;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), 0 0 18px var(--accent-glow);
+  animation: kryptonSmoothPop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.tg-effect-pick-btn {
+  border: none;
+  background: var(--glass-card);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.tg-effect-pick-btn:hover,
+.tg-effect-pick-btn:active {
+  transform: scale(1.22);
+  background: var(--accent-soft);
+}
+
+.krypton-fx-particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 99999999;
+  font-size: 24px;
+  user-select: none;
+  animation: kryptonFxParticleFly 1.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes kryptonFxParticleFly {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.4) rotate(0deg);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--fx-dx, 0px), var(--fx-dy, -260px), 0) scale(1.35) rotate(var(--fx-rot, 45deg));
+  }
+}
+
+.msg-starred-badge {
+  color: #fbbf24;
+  font-size: 11px;
+  margin-right: 3px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.msg-effect-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  margin-bottom: 3px;
+}

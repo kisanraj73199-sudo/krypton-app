@@ -21301,3 +21301,265 @@ initIdentity();
   document.addEventListener("DOMContentLoaded", injectSharedMediaMenuItem);
   setTimeout(injectSharedMediaMenuItem, 500);
 })();
+// =========================================================================
+// 50. FEATURE v62000 (TELEGRAM-STYLE MESSAGE SEND EFFECTS + STAR / BOOKMARK
+//     MESSAGES FILTER):
+//     1. HOLD SEND BUTTON (➤) TO SEND WITH CONFETTI 🎉, FIRE 🔥, LOVE ❤️ OR ⚡
+//     2. LONG-PRESS ANY MESSAGE TO STAR / UNSTAR & FILTER VIA "⭐ Starred" PILL
+// =========================================================================
+
+(function () {
+  let starredMessagesMap = JSON.parse(localStorage.getItem("krypton_starred_msgs") || "{}");
+  let pendingSendEffect = "";
+
+  function saveStarredMessages() {
+    localStorage.setItem("krypton_starred_msgs", JSON.stringify(starredMessagesMap));
+  }
+
+  // 1. Full-Screen Particle Burst Engine for Message Effects
+  window.triggerKryptonScreenEffect = function (effectType) {
+    const emojiMap = {
+      confetti: ["🎉", "🎊", "✨", "🥳", "🎈"],
+      fire: ["🔥", "💥", "⚡", "🧡", "✨"],
+      love: ["❤️", "💖", "🥰", "💕", "💘"],
+      cyber: ["⚡", "💎", "🚀", "💚", "✨"]
+    };
+    const pool = emojiMap[effectType] || emojiMap.confetti;
+
+    for (let i = 0; i < 24; i++) {
+      const sp = document.createElement("div");
+      sp.className = "krypton-fx-particle";
+      sp.textContent = pool[i % pool.length];
+
+      const startX = 15 + Math.random() * 70;
+      const startY = 55 + Math.random() * 30;
+      const dx = (Math.random() - 0.5) * 260;
+      const dy = -(140 + Math.random() * 280);
+      const rot = (Math.random() - 0.5) * 180;
+
+      sp.style.left = startX + "vw";
+      sp.style.top = startY + "vh";
+      sp.style.setProperty("--fx-dx", `${dx}px`);
+      sp.style.setProperty("--fx-dy", `${dy}px`);
+      sp.style.setProperty("--fx-rot", `${rot}deg`);
+
+      document.body.appendChild(sp);
+      setTimeout(() => sp.remove(), 1400);
+    }
+  };
+
+  function closeSendEffectsPopover() {
+    document.querySelectorAll(".tg-send-effects-popover").forEach((el) => el.remove());
+  }
+
+  function openSendEffectsPopover() {
+    closeSendEffectsPopover();
+    const inputBar = document.getElementById("chat-input-bar");
+    const chatInp = document.getElementById("chat-input");
+    if (!inputBar || !chatInp || !chatInp.value.trim()) return;
+
+    const pop = document.createElement("div");
+    pop.className = "tg-send-effects-popover";
+    const effects = [
+      { id: "confetti", emo: "🎉", title: "Party Confetti" },
+      { id: "fire", emo: "🔥", title: "Fire Burst" },
+      { id: "love", emo: "❤️", title: "Heart Shower" },
+      { id: "cyber", emo: "⚡", title: "Cyber Surge" }
+    ];
+
+    effects.forEach((fx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tg-effect-pick-btn";
+      btn.textContent = fx.emo;
+      btn.title = `Send with ${fx.title}`;
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        closeSendEffectsPopover();
+        pendingSendEffect = fx.id;
+        const sendBtn = document.getElementById("btn-send");
+        if (sendBtn) sendBtn.click();
+      };
+      pop.appendChild(btn);
+    });
+
+    inputBar.appendChild(pop);
+  }
+
+  // Bind Long-Press on #btn-send to open the Effects Popover
+  function bindSendButtonEffectsLongPress() {
+    const btnSend = document.getElementById("btn-send");
+    if (!btnSend || btnSend.dataset.fxBoundV62) return;
+    btnSend.dataset.fxBoundV62 = "true";
+
+    let holdTimer = null;
+    btnSend.addEventListener("pointerdown", () => {
+      const inp = document.getElementById("chat-input");
+      if (!inp || !inp.value.trim()) return;
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        openSendEffectsPopover();
+      }, 420);
+    });
+
+    const clearHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    };
+    btnSend.addEventListener("pointerup", clearHold);
+    btnSend.addEventListener("pointercancel", clearHold);
+    btnSend.addEventListener("pointerleave", clearHold);
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".tg-send-effects-popover") && !e.target.closest("#btn-send")) {
+      closeSendEffectsPopover();
+    }
+  });
+
+  // Hook transmitPayload to attach effect metadata and broadcast live effect to peer!
+  const prevTransmitV62 = window.transmitPayload;
+  window.transmitPayload = async function (payloadString) {
+    const fx = pendingSendEffect;
+    pendingSendEffect = "";
+    const res = await prevTransmitV62(payloadString);
+
+    if (fx) {
+      window.triggerKryptonScreenEffect(fx);
+      if (activeSubscription) {
+        try {
+          activeSubscription.send({
+            type: "broadcast",
+            event: "msg-screen-effect",
+            payload: { effect: fx, sender: myUsername }
+          });
+        } catch (e) { }
+      }
+    }
+    return res;
+  };
+
+  // Listen for incoming message screen effects in active room
+  const prevJoinRoomV62 = window.joinRoom;
+  window.joinRoom = async function (roomId, displayName, pushHistory = true) {
+    await prevJoinRoomV62(roomId, displayName, pushHistory);
+    if (activeSubscription) {
+      activeSubscription.on("broadcast", { event: "msg-screen-effect" }, (payload) => {
+        const p = payload.payload;
+        if (p && p.effect && p.sender !== myUsername) {
+          window.triggerKryptonScreenEffect(p.effect);
+        }
+      });
+    }
+  };
+
+  // 2. Star / Bookmark Messages Engine + "⭐ Starred" Category Pill
+  function ensureStarredCategoryPill() {
+    const catBar = document.getElementById("chat-category-bar");
+    if (!catBar || document.getElementById("cat-pill-starred")) return;
+
+    const btn = document.createElement("button");
+    btn.className = "cat-filter-pill";
+    btn.id = "cat-pill-starred";
+    btn.dataset.filter = "starred";
+    btn.innerHTML = `<i data-lucide="star" class="pill-inline-svg"></i><span>Starred</span>`;
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".cat-filter-pill").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      activeCategoryFilter = "starred";
+      applyCategoryAndSearchFilters();
+    });
+    catBar.appendChild(btn);
+    if (window.lucide) lucide.createIcons({ nodes: [btn] });
+  }
+
+  function applyStarBadgeToRow(rowEl, msgId) {
+    if (!rowEl) return;
+    const isStarred = Boolean(starredMessagesMap[msgId]);
+    rowEl.dataset.starred = isStarred ? "true" : "false";
+    const metaEl = rowEl.querySelector(".msg-meta");
+    if (!metaEl) return;
+
+    let badge = metaEl.querySelector(".msg-starred-badge");
+    if (isStarred && !badge) {
+      badge = document.createElement("span");
+      badge.className = "msg-starred-badge";
+      badge.title = "Starred Message";
+      badge.textContent = "★";
+      metaEl.insertBefore(badge, metaEl.firstChild);
+    } else if (!isStarred && badge) {
+      badge.remove();
+    }
+  }
+
+  window.toggleStarMessage = function (msgId) {
+    if (!msgId) return;
+    if (starredMessagesMap[msgId]) {
+      delete starredMessagesMap[msgId];
+      showToast("Removed from Starred messages", "info", 1500);
+    } else {
+      starredMessagesMap[msgId] = { room: currentRoom, ts: Date.now() };
+      showToast("⭐ Message Starred!", "success", 1500);
+    }
+    saveStarredMessages();
+    const row = document.getElementById("msg-row-" + msgId);
+    if (row) applyStarBadgeToRow(row, msgId);
+    if (activeCategoryFilter === "starred") applyCategoryAndSearchFilters();
+  };
+
+  // Add "Star / Unstar Message" option to Long-Press Message Context Menu
+  const prevOpenCtxV62 = window.openWhatsAppMessageContextMenu;
+  window.openWhatsAppMessageContextMenu = function (msgId, clientX, clientY) {
+    if (typeof prevOpenCtxV62 === "function") {
+      prevOpenCtxV62(msgId, clientX, clientY);
+    }
+    const actionsList = document.querySelector(".whatsapp-msg-context-menu .msg-ctx-actions-list");
+    if (!actionsList) return;
+
+    const isStarred = Boolean(starredMessagesMap[msgId]);
+    const btnStar = document.createElement("button");
+    btnStar.className = "msg-ctx-btn";
+    btnStar.innerHTML = `<i data-lucide="star" style="width: 15px; height: 15px; color: #fbbf24;"></i><span>${isStarred ? "Unstar Message" : "Star Message"}</span>`;
+    btnStar.onclick = () => {
+      if (typeof closeMessageContextMenu === "function") closeMessageContextMenu();
+      window.toggleStarMessage(msgId);
+    };
+    actionsList.insertBefore(btnStar, actionsList.children[1] || actionsList.firstChild);
+    if (window.lucide) lucide.createIcons({ nodes: [btnStar] });
+  };
+
+  // Support "starred" filter in applyCategoryAndSearchFilters
+  const prevApplyFiltersV62 = window.applyCategoryAndSearchFilters;
+  window.applyCategoryAndSearchFilters = function () {
+    if (activeCategoryFilter !== "starred") {
+      return prevApplyFiltersV62();
+    }
+    const rows = document.querySelectorAll("#message-container .message-row");
+    rows.forEach((row) => {
+      const msgId = (row.id || "").replace("msg-row-", "");
+      const isStar = Boolean(starredMessagesMap[msgId]);
+      row.classList.toggle("filtered-out", !isStar);
+      row.style.display = isStar ? "" : "none";
+    });
+  };
+
+  const prevCreateNodeV62 = window.createMessageNode;
+  window.createMessageNode = async function (msg, rawTextOverride) {
+    const node = await prevCreateNodeV62(msg, rawTextOverride);
+    if (node) {
+      const msgId = (node.id || "").replace("msg-row-", "");
+      applyStarBadgeToRow(node, msgId);
+    }
+    return node;
+  };
+
+  function initV62000() {
+    bindSendButtonEffectsLongPress();
+    ensureStarredCategoryPill();
+  }
+
+  document.addEventListener("DOMContentLoaded", initV62000);
+  setTimeout(initV62000, 500);
+})();
