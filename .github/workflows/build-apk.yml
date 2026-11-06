@@ -40,7 +40,7 @@ jobs:
           COMMIT_SHA="${GITHUB_SHA::7}"
           COMMIT_MSG=$(git log -1 --pretty=%B | tr '\n' ' ' | sed 's/"/\\"/g')
           FEAT_VER=$(grep -oE "v[0-9]{5}" www/app.js | tail -1)
-          if [ -z "$FEAT_VER" ]; then FEAT_VER="v67000"; fi
+          if [ -z "$FEAT_VER" ]; then FEAT_VER="v70000"; fi
           BUILD_TS=$(date +%s)
 
           cat <<EOF > www/version.json
@@ -108,25 +108,36 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Delete Existing 'latest' Release
-        uses: dev-drprasad/delete-tag-and-release@v1.1
-        with:
-          delete_release: true
-          tag_name: latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Publish krypton.apk & version.json to GitHub Releases Automatically
+      - name: Publish krypton.apk & version.json to GitHub Releases (Bulletproof CLI with Auto-Retry)
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Krypton Latest APK"
-          files: |
-            android/app/build/outputs/apk/debug/krypton.apk
-            www/version.json
-          prerelease: false
-          generate_release_notes: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Ensure git tag 'latest' points to the current commit
+          git tag -f latest
+          git push origin latest --force
+
+          # Create 'latest' release if it doesn't exist yet, otherwise update its title
+          if ! gh release view latest >/dev/null 2>&1; then
+            gh release create latest \
+              --title "Krypton Latest APK" \
+              --notes "Latest Krypton Android APK Release"
+          else
+            gh release edit latest \
+              --title "Krypton Latest APK" \
+              --notes "Latest Krypton Android APK Release"
+          fi
+
+          # Upload krypton.apk & version.json with --clobber (overwrite) and up to 3 automatic retries
+          for attempt in 1 2 3; do
+            echo "Uploading release assets (Attempt $attempt)..."
+            if gh release upload latest \
+              android/app/build/outputs/apk/debug/krypton.apk \
+              www/version.json \
+              --clobber; then
+              echo "✅ Both krypton.apk and version.json uploaded successfully!"
+              break
+            fi
+            echo "Upload glitch detected, retrying in 5 seconds..."
+            sleep 5
+          done
