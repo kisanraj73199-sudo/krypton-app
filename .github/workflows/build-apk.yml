@@ -108,36 +108,29 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish krypton.apk & version.json to GitHub Releases (Bulletproof CLI with Auto-Retry)
+      - name: Publish krypton.apk & version.json to GitHub Releases (100% Public & Published)
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Ensure git tag 'latest' points to the current commit
-          git tag -f latest
-          git push origin latest --force
+          # 1. Remove any stuck or draft 'latest' release/tag so URL is 100% public
+          gh release delete latest --yes --cleanup-tag || true
+          git push --delete origin latest || true
+          sleep 3
 
-          # Create 'latest' release if it doesn't exist yet, otherwise update its title
-          if ! gh release view latest >/dev/null 2>&1; then
-            gh release create latest \
-              --title "Krypton Latest APK" \
-              --notes "Latest Krypton Android APK Release"
-          else
-            gh release edit latest \
-              --title "Krypton Latest APK" \
-              --notes "Latest Krypton Android APK Release"
-          fi
-
-          # Upload krypton.apk & version.json with --clobber (overwrite) and up to 3 automatic retries
+          # 2. Create a fresh PUBLIC (non-draft) release with both files attached
           for attempt in 1 2 3; do
-            echo "Uploading release assets (Attempt $attempt)..."
-            if gh release upload latest \
+            echo "Publishing public release (Attempt $attempt)..."
+            if gh release create latest \
               android/app/build/outputs/apk/debug/krypton.apk \
               www/version.json \
-              --clobber; then
-              echo "✅ Both krypton.apk and version.json uploaded successfully!"
+              --title "Krypton Latest APK" \
+              --notes "Latest Krypton Android APK Release" \
+              --latest; then
+              echo "✅ Public release created and assets uploaded!"
               break
             fi
-            echo "Upload glitch detected, retrying in 5 seconds..."
+            echo "Retrying in 5 seconds..."
+            gh release delete latest --yes --cleanup-tag || true
             sleep 5
           done
